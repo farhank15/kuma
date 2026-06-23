@@ -20,9 +20,25 @@ interface BatchWriterParams {
 export async function handleBatchFileWriter(params: BatchWriterParams): Promise<string> {
   const { files } = params;
 
+  // Batas maksimal 15 file
+  if (files.length > 15) {
+    return `Error: Maksimal 15 file per batch. Anda mengirim ${files.length} file.`;
+  }
+
   const results: Array<{ filePath: string; success: boolean; error?: string }> = [];
 
   for (const file of files) {
+    // Validasi konten tidak kosong
+    if (!file.content || file.content.trim().length === 0) {
+      results.push({ filePath: file.filePath, success: false, error: "Konten file tidak boleh kosong." });
+      continue;
+    }
+
+    // Validasi instructions harus diisi
+    if (!file.instructions || file.instructions.trim().length === 0) {
+      results.push({ filePath: file.filePath, success: false, error: "Alasan pembuatan file (instructions) wajib diisi." });
+      continue;
+    }
     try {
       // Validate path
       const validation = validateFilePath(file.filePath);

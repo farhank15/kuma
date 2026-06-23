@@ -10,15 +10,29 @@ import fs from "node:fs";
  */
 export function validateFilePath(
   filePath: string,
-  projectRoot?: string
+  projectRoot?: string,
 ): { valid: true; resolvedPath: string } | { valid: false; error: Error } {
   try {
     const root = projectRoot ?? getProjectRoot();
     const resolvedRoot = path.resolve(root);
-    const resolvedPath = path.resolve(resolvedRoot, filePath);
-
-    // Normalize paths for Windows compatibility
     const normalizedRoot = path.normalize(resolvedRoot).toLowerCase();
+    let resolvedPath: string;
+
+    if (!path.isAbsolute(filePath)) {
+      const cwdPath = path.resolve(process.cwd(), filePath);
+      const normalizedCwdPath = path.normalize(cwdPath).toLowerCase();
+      if (
+        fs.existsSync(cwdPath) &&
+        normalizedCwdPath.startsWith(normalizedRoot)
+      ) {
+        resolvedPath = cwdPath;
+      } else {
+        resolvedPath = path.resolve(resolvedRoot, filePath);
+      }
+    } else {
+      resolvedPath = path.resolve(resolvedRoot, filePath);
+    }
+
     const normalizedPath = path.normalize(resolvedPath).toLowerCase();
 
     // Check: path must be within project root
@@ -26,7 +40,7 @@ export function validateFilePath(
       return {
         valid: false,
         error: new Error(
-          `PATH_TRAVERSAL: Access denied. Path "${filePath}" resolves outside project root "${resolvedRoot}".`
+          `PATH_TRAVERSAL: Access denied. Path "${filePath}" resolves outside project root "${resolvedRoot}".`,
         ),
       };
     }
@@ -36,7 +50,7 @@ export function validateFilePath(
       return {
         valid: false,
         error: new Error(
-          `PATH_TRAVERSAL: Path traversal detected in "${filePath}". Relative paths with ".." are not allowed.`
+          `PATH_TRAVERSAL: Path traversal detected in "${filePath}". Relative paths with ".." are not allowed.`,
         ),
       };
     }
@@ -61,7 +75,9 @@ export function validateFilePath(
       if (normalizedPath.includes(pattern.toLowerCase())) {
         return {
           valid: false,
-          error: new Error(`PATH_TRAVERSAL: Access to system directory "${pattern}" is blocked.`),
+          error: new Error(
+            `PATH_TRAVERSAL: Access to system directory "${pattern}" is blocked.`,
+          ),
         };
       }
     }
@@ -79,7 +95,10 @@ export function validateFilePath(
   } catch (err) {
     return {
       valid: false,
-      error: err instanceof Error ? err : new Error(`Path validation error: ${String(err)}`),
+      error:
+        err instanceof Error
+          ? err
+          : new Error(`Path validation error: ${String(err)}`),
     };
   }
 }
@@ -89,16 +108,40 @@ export function validateFilePath(
  */
 export function validateFileExtension(filePath: string): boolean {
   const allowedExtensions = [
-    ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-    ".json", ".md", ".css", ".html", ".htm",
-    ".env", ".env.example", ".env.local",
-    ".yml", ".yaml", ".toml",
-    ".svg", ".png", ".jpg", ".gif",
-    ".sh", ".bat", ".ps1",
-    ".sql", ".graphql", ".gql",
-    ".vue", ".svelte", ".astro",
-    ".prisma", ".proto",
-    ".txt", ".log",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".json",
+    ".md",
+    ".css",
+    ".html",
+    ".htm",
+    ".env",
+    ".env.example",
+    ".env.local",
+    ".yml",
+    ".yaml",
+    ".toml",
+    ".svg",
+    ".png",
+    ".jpg",
+    ".gif",
+    ".sh",
+    ".bat",
+    ".ps1",
+    ".sql",
+    ".graphql",
+    ".gql",
+    ".vue",
+    ".svelte",
+    ".astro",
+    ".prisma",
+    ".proto",
+    ".txt",
+    ".log",
   ];
 
   const ext = path.extname(filePath).toLowerCase();

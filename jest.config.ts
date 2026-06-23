@@ -23,6 +23,9 @@ const config: Config = {
   collectCoverageFrom: [
     "src/tools/smartGrep.ts",
     "src/tools/preciseDiffEditor.ts",
+    "src/tools/smartFilePicker.ts",
+    "src/tools/safeTerminalExec.ts",
+    "src/tools/batchFileWriter.ts",
     "src/engine/sessionMemory.ts",
   ],
   coverageReporters: ["text", "lcov"],

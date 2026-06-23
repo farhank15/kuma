@@ -43,8 +43,15 @@ class LSPClient {
   private initialized = false;
   private initPromise: Promise<void> | null = null;
   private openDocuments = new Set<string>();
+  private _isAvailable = true;
+
+  /** Cek apakah LSP tersedia (binary terinstall) */
+  isAvailable(): boolean {
+    return this._isAvailable;
+  }
 
   async ensureInitialized(): Promise<void> {
+    if (this._isAvailable !== undefined && !this._isAvailable) return;
     if (this.initialized && this.process) return;
 
     // If previous init failed, reset so we can retry
@@ -65,14 +72,21 @@ class LSPClient {
   private async initialize(): Promise<void> {
     const root = getProjectRoot();
 
+    // Resolve typescript-language-server binary (local or global)
+    const lspBinary = this.resolveLspBinary(root);
+    if (!lspBinary) {
+      this._isAvailable = false;
+      this.initialized = false;
+      this.initPromise = null;
+      console.error(`[LSP] typescript-language-server not found. LSP features will fallback to regex.`);
+      return;
+    }
+
     // Check if tsconfig.json exists, if not warn but proceed
     const tsconfigPath = path.join(root, "tsconfig.json");
     if (!fs.existsSync(tsconfigPath)) {
       console.error(`[LSP] Warning: tsconfig.json not found at "${root}". Running in implicit project mode.`);
     }
-
-    // Resolve typescript-language-server binary (local or global)
-    const lspBinary = this.resolveLspBinary(root);
 
     // Spawn typescript-language-server
     this.process = spawn(lspBinary, ["--stdio", "--log-level=4"], {
@@ -150,7 +164,7 @@ class LSPClient {
   }
 
   /** Resolve the typescript-language-server binary from local or global install */
-  private resolveLspBinary(projectRoot: string): string {
+  private resolveLspBinary(projectRoot: string): string | null {
     const candidates = [
       path.join(projectRoot, "node_modules", ".bin", "typescript-language-server"),
       path.join(projectRoot, "..", "node_modules", ".bin", "typescript-language-server"),
@@ -175,13 +189,8 @@ class LSPClient {
       // ignore PATH resolution errors
     }
 
-    // Not found anywhere — throw early with helpful message
-    throw new Error(
-      `typescript-language-server not found. Install with:\n` +
-      `  npm install typescript-language-server --save-dev\n` +
-      `  # or\n` +
-      `  npm install -g typescript-language-server`
-    );
+    // Not found — return null so caller can use regex fallback
+    return null;
   }
 
   private toUri(filePath: string): string {
