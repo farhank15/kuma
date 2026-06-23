@@ -40,17 +40,17 @@ jobs:
         with:
           node-version: "18"
           registry-url: "https://npm.pkg.github.com"
-          scope: "@farhank15"
+          scope: "@plumpslabs"
 
       - run: npm ci
       - run: npm run build --if-present
 
-      # Rename package so scope matches GitHub username (farhank15)
+      # Rename package so scope matches GitHub organization (plumpslabs)
       - name: Adapt package name for GitHub Packages
         run: |
           node -e "
             const pkg = JSON.parse(require('fs').readFileSync('package.json','utf8'));
-            pkg.name = '@farhank15/kuma';
+            pkg.name = '@plumpslabs/kuma';
             require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
           "
 
