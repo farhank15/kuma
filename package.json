@@ -56,13 +56,13 @@
     "git-diff",
     "cli"
   ],
-  "repository": {
+"repository": {
     "type": "git",
-    "url": "git+https://github.com/plumps/kuma.git"
+    "url": "git+https://github.com/plumpslabs/kuma.git"
   },
   "bugs": {
-    "url": "https://github.com/plumps/kuma/issues"
+    "url": "https://github.com/plumpslabs/kuma/issues"
   },
-  "homepage": "https://github.com/plumps/kuma#readme",
+  "homepage": "https://github.com/plumpslabs/kuma#readme",
   "license": "MIT"
 }

@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/plumps/kuma/main/public/kuma.png" alt="Kuma Logo" width="200" />
+<img src="https://raw.githubusercontent.com/plumpslabs/kuma/main/public/kuma.png" alt="Kuma Logo" width="200" />
 
 # Kuma
 
 **Zero-setup safety toolkit for AI coding agents.**
 
-[![npm](https://img.shields.io/npm/v/@plumps/kuma.svg?logo=npm&color=red)](https://www.npmjs.com/package/@plumps/kuma)
+[![npm](https://img.shields.io/npm/v/@plumpslabs/kuma.svg?logo=npm&color=red)](https://www.npmjs.com/package/@plumpslabs/kuma)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-18+-339933?logo=nodedotjs)](https://nodejs.org/)
 
@@ -25,7 +25,7 @@ Add to your MCP client config:
   "mcpServers": {
     "kuma": {
       "command": "npx",
-      "args": ["-y", "@plumps/kuma"]
+      "args": ["-y", "@plumpslabs/kuma"]
     }
   }
 }
