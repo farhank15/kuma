@@ -12,6 +12,7 @@ interface CodeReviewerParams {
   files?: string[];
   focus?: "correctness" | "conventions" | "security" | "performance";
   customCriteria?: string;
+  format?: "text" | "json";
 }
 
 interface ReviewIssue {
@@ -71,7 +72,7 @@ function getGitChangedFiles(): string[] {
 export async function handleCodeReviewer(
   params: CodeReviewerParams,
 ): Promise<string> {
-  const { files: inputFiles, focus = "correctness", customCriteria } = params;
+  const { files: inputFiles, focus = "correctness", customCriteria, format = "text" } = params;
 
   let files = inputFiles ?? [];
   let isAutoDetected = false;
@@ -150,6 +151,10 @@ export async function handleCodeReviewer(
     issuesFound: allIssues.length,
     errors: allIssues.filter((i) => i.severity === "error").length,
   });
+
+  if (format === "json") {
+    return JSON.stringify(allIssues, null, 2);
+  }
 
   return formatReviewOutput(
     allIssues,

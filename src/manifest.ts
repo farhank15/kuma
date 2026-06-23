@@ -9,17 +9,15 @@ import { handleBatchFileWriter } from "./tools/batchFileWriter.js";
 import { handleSafeTerminalExec } from "./tools/safeTerminalExec.js";
 import { handleCodeReviewer } from "./agents/codeReviewer.js";
 import { handleProjectConventions } from "./agents/projectConventions.js";
+import { handleGitLog } from "./tools/gitLog.js";
 
 // Engine
-import { injectMandates } from "./engine/mandateInjector.js";
 import { getSessionMemory } from "./engine/sessionMemory.js";
 
 // LSP Tools
 import {
-  handleFindReferences,
-  handleGoToDefinition,
   handleRenameSymbol,
-  handleGetTypeInfo,
+  handleLspQuery,
 } from "./tools/lspTools.js";
 
 // ============================================================
@@ -28,29 +26,7 @@ import {
 
 export function registerAllTools(server: McpServer): void {
   // ============================================================
-  // 1. initialize_session_rules
-  // ============================================================
-  server.tool(
-    "initialize_session_rules",
-    "Forces AI to load minimalist coding rules (Ponytail + Caveman doctrine)",
-    {},
-    async () => {
-      try {
-        const result = await injectMandates();
-        return {
-          content: [{ type: "text", text: result }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Error injecting mandates: ${err}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // ============================================================
-  // 2. smart_grep
+  // 1. smart_grep
   // ============================================================
   server.tool(
     "smart_grep",
@@ -59,6 +35,7 @@ export function registerAllTools(server: McpServer): void {
       query: z.string().min(1).describe("Regex pattern to search for"),
       targetFolder: z.string().optional().describe("Target folder (default: project root, max depth 3)"),
       maxResults: z.number().min(1).max(100).optional().default(30).describe("Max results to return"),
+      extensions: z.array(z.string()).optional().describe("Filter results by file extensions (e.g. ['ts', 'js'])"),
     },
     async (params) => {
       try {
@@ -212,7 +189,7 @@ export function registerAllTools(server: McpServer): void {
   );
 
   // ============================================================
-  // 7. code_reviewer
+  // 6. code_reviewer
   // ============================================================
   server.tool(
     "code_reviewer",
@@ -221,6 +198,7 @@ export function registerAllTools(server: McpServer): void {
       files: z.array(z.string().min(1)).max(10).optional().describe("Files to review (if omitted/empty, auto-detects changed files via git diff)"),
       focus: z.enum(["correctness", "conventions", "security", "performance"]).optional().default("correctness").describe("Review focus"),
       customCriteria: z.string().optional().describe("Custom review criteria/rules to check (e.g. 'Ensure all API endpoints follow RESTful standards')"),
+      format: z.enum(["text", "json"]).optional().default("text").describe("Output format: 'text' (default markdown report) or 'json' (structured list of issues)"),
     },
     async (params) => {
       try {
@@ -284,71 +262,26 @@ export function registerAllTools(server: McpServer): void {
   );
 
   // ============================================================
-  // 10. context_pruner_advice
+  // 10. lsp_query
   // ============================================================
   server.tool(
-    "context_pruner_advice",
-    "Provides context pruning suggestions when token usage is nearing the limit.",
-    {},
-    async () => {
-      try {
-        const { getPrunerAdvice } = await import("./engine/contextPruner.js");
-        const advice = getPrunerAdvice();
-        return {
-          content: [{ type: "text", text: advice }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Error in context_pruner_advice: ${err}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // ============================================================
-  // 10b. context_prune_execute
-  // ============================================================
-  server.tool(
-    "context_prune_execute",
-    "Clears the session search history and trims tool call records in session memory to save context window tokens.",
-    {},
-    async () => {
-      try {
-        const { handleContextPrunerExecute } = await import("./engine/contextPruner.js");
-        const result = handleContextPrunerExecute();
-        return {
-          content: [{ type: "text", text: result }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Error in context_prune_execute: ${err}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // ============================================================
-  // 11. find_references
-  // ============================================================
-  server.tool(
-    "find_references",
-    "Finds all semantic references to a symbol (variable, function, class, interface, etc.) across the entire project. Uses TypeScript Language Server for accurate results - unlike smart_grep which only does text matching.",
+    "lsp_query",
+    "Query definitions, references, or type information for a symbol in the project using TypeScript Language Server.",
     {
       filePath: z.string().min(1).describe("Path to the file containing the symbol"),
-      line: z.number().min(0).describe("Line number (0-indexed)"),
-      character: z.number().min(0).describe("Character position (0-indexed)"),
+      line: z.number().min(0).describe("Line number (0-indexed) where the symbol is"),
+      character: z.number().min(0).describe("Character position (0-indexed) where the symbol is"),
+      action: z.enum(["def", "refs", "type"]).describe("Action to perform: 'def' = go to definition, 'refs' = find references, 'type' = get type info"),
     },
     async (params) => {
       try {
-        const result = await handleFindReferences(params);
+        const result = await handleLspQuery(params);
         return {
           content: [{ type: "text", text: result }],
         };
       } catch (err) {
         return {
-          content: [{ type: "text", text: `Error in find_references: ${err}` }],
+          content: [{ type: "text", text: `Error in lsp_query: ${err}` }],
           isError: true,
         };
       }
@@ -356,33 +289,7 @@ export function registerAllTools(server: McpServer): void {
   );
 
   // ============================================================
-  // 12. go_to_definition
-  // ============================================================
-  server.tool(
-    "go_to_definition",
-    "Navigate to the definition of a symbol at a given position. Returns file path, line number, and surrounding context.",
-    {
-      filePath: z.string().min(1).describe("Path to the file containing the symbol"),
-      line: z.number().min(0).describe("Line number (0-indexed)"),
-      character: z.number().min(0).describe("Character position (0-indexed)"),
-    },
-    async (params) => {
-      try {
-        const result = await handleGoToDefinition(params);
-        return {
-          content: [{ type: "text", text: result }],
-        };
-      } catch (err) {
-        return {
-          content: [{ type: "text", text: `Error in go_to_definition: ${err}` }],
-          isError: true,
-        };
-      }
-    }
-  );
-
-  // ============================================================
-  // 13. rename_symbol
+  // 11. rename_symbol
   // ============================================================
   server.tool(
     "rename_symbol",
@@ -409,30 +316,29 @@ export function registerAllTools(server: McpServer): void {
   );
 
   // ============================================================
-  // 14. get_type_info
+  // 12. git_log
   // ============================================================
   server.tool(
-    "get_type_info",
-    "Returns TypeScript type information for a symbol at a given position. Shows inferred types, interface shapes, and type definitions (like hover in IDE).",
+    "git_log",
+    "Gets structured git commit history for the project or a specific file.",
     {
-      filePath: z.string().min(1).describe("Path to the file"),
-      line: z.number().min(0).describe("Line number (0-indexed)"),
-      character: z.number().min(0).describe("Character position (0-indexed)"),
+      maxCount: z.number().min(1).max(100).optional().default(10).describe("Max number of commits to return"),
+      filePath: z.string().optional().describe("Filter history to a specific file"),
     },
     async (params) => {
       try {
-        const result = await handleGetTypeInfo(params);
+        const result = await handleGitLog(params);
         return {
           content: [{ type: "text", text: result }],
         };
       } catch (err) {
         return {
-          content: [{ type: "text", text: `Error in get_type_info: ${err}` }],
+          content: [{ type: "text", text: `Error in git_log: ${err}` }],
           isError: true,
         };
       }
     }
   );
 
-  console.error("[Manifest] Registered 14 tools.");
+  console.error("[Manifest] Registered 12 tools.");
 }

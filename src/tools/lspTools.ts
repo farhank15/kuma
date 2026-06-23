@@ -283,3 +283,25 @@ export async function handleGetTypeInfo(params: LSPFindParams): Promise<string> 
     return `Error saat mengambil type info: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
+
+interface LSPQueryParams {
+  filePath: string;
+  line: number;
+  character: number;
+  action: "def" | "refs" | "type";
+}
+
+export async function handleLspQuery(params: LSPQueryParams): Promise<string> {
+  const { filePath, line, character, action } = params;
+  if (action === "def") {
+    return handleGoToDefinition({ filePath, line, character });
+  }
+  if (action === "refs") {
+    return handleFindReferences({ filePath, line, character });
+  }
+  if (action === "type") {
+    return handleGetTypeInfo({ filePath, line, character });
+  }
+  return `Error: Action "${action}" tidak didukung.`;
+}
+

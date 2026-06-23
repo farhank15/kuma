@@ -13,6 +13,7 @@ interface SmartGrepParams {
   query: string;
   targetFolder?: string;
   maxResults?: number;
+  extensions?: string[];
 }
 
 const IGNORE_PATTERNS = [
@@ -48,7 +49,7 @@ const grepCache = new Map<string, { results: string; timestamp: number }>();
 const CACHE_TTL_MS = 30_000; // 30 detik
 
 export async function handleSmartGrep(params: SmartGrepParams): Promise<string> {
-  const { query, targetFolder, maxResults = 30 } = params;
+  const { query, targetFolder, maxResults = 30, extensions } = params;
 
   // Validasi input
   if (!query || query.length < 1) {
@@ -56,7 +57,7 @@ export async function handleSmartGrep(params: SmartGrepParams): Promise<string> 
   }
 
   // Cek cache
-  const cacheKey = `${query}:${targetFolder ?? "root"}:${maxResults}`;
+  const cacheKey = `${query}:${targetFolder ?? "root"}:${maxResults}:${extensions ? extensions.join(",") : ""}`;
   const cached = grepCache.get(cacheKey);
   if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
     sessionMemory.recordToolCall("smart_grep", { query, cached: true });
@@ -72,7 +73,7 @@ export async function handleSmartGrep(params: SmartGrepParams): Promise<string> 
       : "**/*";
 
     // Cari file yang match
-    const entries = await fg(searchPattern, {
+    let entries = await fg(searchPattern, {
       cwd: projectRoot,
       ignore: IGNORE_PATTERNS,
       onlyFiles: true,
@@ -81,8 +82,17 @@ export async function handleSmartGrep(params: SmartGrepParams): Promise<string> 
       dot: false, // Skip dotfiles
     });
 
+    // Filter by extensions if provided
+    if (extensions && extensions.length > 0) {
+      const normalizedExts = extensions.map(e => e.startsWith(".") ? e.toLowerCase() : `.${e.toLowerCase()}`);
+      entries = entries.filter(entry => {
+        const ext = path.extname(entry).toLowerCase();
+        return normalizedExts.includes(ext);
+      });
+    }
+
     if (entries.length === 0) {
-      const msg = `Tidak ada file ditemukan${targetFolder ? ` di folder "${targetFolder}"` : ""}.`;
+      const msg = `Tidak ada file ditemukan${targetFolder ? ` di folder "${targetFolder}"` : ""}${extensions ? ` dengan ekstensi [${extensions.join(", ")}]` : ""}.`;
       grepCache.set(cacheKey, { results: msg, timestamp: Date.now() });
       return msg;
     }

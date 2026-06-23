@@ -220,4 +220,12 @@ function authenticate() {}
     const matchCount = (result.match(/📄/g) || []).length;
     expect(matchCount).toBeLessThanOrEqual(1);
   });
+
+  test("filters results by extension", async () => {
+    const { handleSmartGrep } = await import("../src/tools/smartGrep.js");
+    const result = await handleSmartGrep({ query: "function", extensions: ["ts"] });
+    expect(result).toContain("src/auth.ts");
+    expect(result).not.toContain("package.json");
+  });
 });
+

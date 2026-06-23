@@ -4,6 +4,7 @@ import {
   handleGoToDefinition,
   handleRenameSymbol,
   handleGetTypeInfo,
+  handleLspQuery,
 } from "../src/tools/lspTools.js";
 import { lspClient } from "../src/engine/lspClient.js";
 import fs from "node:fs";
@@ -198,6 +199,55 @@ describe("handleGetTypeInfo", () => {
       character: 0,
     });
 
-    expect(result).toContain("Tidak ada informasi tipe");
   });
 });
+
+describe("handleLspQuery", () => {
+  test("wraps goToDefinition, findReferences, and getTypeInfo correctly", async () => {
+    jest.spyOn(lspClient, "goToDefinition").mockResolvedValue({
+      uri: "file:///project/src/defs.ts",
+      filePath: "/project/src/defs.ts",
+      line: 10,
+      character: 4,
+    });
+    jest.spyOn(lspClient, "findReferences").mockResolvedValue([]);
+    jest.spyOn(lspClient, "getTypeInfo").mockResolvedValue({
+      contents: "const y: number",
+    });
+
+    const resDef = await handleLspQuery({
+      filePath: "src/test.ts",
+      line: 3,
+      character: 6,
+      action: "def",
+    });
+    expect(resDef).toContain("Go to Definition");
+
+    const resRefs = await handleLspQuery({
+      filePath: "src/test.ts",
+      line: 0,
+      character: 0,
+      action: "refs",
+    });
+    expect(resRefs).toContain("Tidak ada referensi");
+
+    const resType = await handleLspQuery({
+      filePath: "src/test.ts",
+      line: 0,
+      character: 6,
+      action: "type",
+    });
+    expect(resType).toContain("Type Info");
+  });
+
+  test("handles unsupported actions", async () => {
+    const result = await handleLspQuery({
+      filePath: "src/test.ts",
+      line: 0,
+      character: 0,
+      action: "unknown" as any,
+    });
+    expect(result).toContain("tidak didukung");
+  });
+});
+
