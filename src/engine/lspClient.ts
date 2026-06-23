@@ -65,13 +65,10 @@ class LSPClient {
   private async initialize(): Promise<void> {
     const root = getProjectRoot();
 
-    // Check: tsconfig.json required
+    // Check if tsconfig.json exists, if not warn but proceed
     const tsconfigPath = path.join(root, "tsconfig.json");
     if (!fs.existsSync(tsconfigPath)) {
-      this.initPromise = null;
-      throw new Error(
-        `tsconfig.json not found at "${tsconfigPath}". TypeScript Language Server requires a tsconfig.json to analyze the project.`
-      );
+      console.error(`[LSP] Warning: tsconfig.json not found at "${root}". Running in implicit project mode.`);
     }
 
     // Resolve typescript-language-server binary (local or global)
