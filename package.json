@@ -1,6 +1,6 @@
 {
   "name": "@farhan22/kuma",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "description": "Zero-setup safety toolkit for AI coding agents. MCP server with code review, git analysis, file editing, session memory, and static analysis — works with Claude Code, Cursor, Gemini CLI.",
   "type": "module",
   "main": "dist/index.js",
