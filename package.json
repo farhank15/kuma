@@ -1,6 +1,6 @@
 {
   "name": "@farhan22/kuma",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Mega-Plugin Orchestrator MCP Server — Universal AI Agent for any MCP-compatible client (Claude Code, Codex, Gemini, Cursor)",
   "type": "module",
   "main": "dist/index.js",
