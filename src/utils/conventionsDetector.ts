@@ -58,80 +58,119 @@ export async function detectConventions(forceRescan = false): Promise<ProjectCon
 
 function detectFramework(root: string): string {
   const pkg = readJsonSafe(path.join(root, "package.json"));
-  if (!pkg) return "unknown";
+  if (pkg) {
+    const pkgDeps = (pkg.dependencies ?? {}) as Record<string, string>;
+    const pkgDevDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
+    const deps: Record<string, string> = { ...pkgDeps, ...pkgDevDeps };
 
-  const pkgDeps = (pkg.dependencies ?? {}) as Record<string, string>;
-  const pkgDevDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
-  const deps: Record<string, string> = { ...pkgDeps, ...pkgDevDeps };
+    // Web frameworks
+    if (deps.next) return "Next.js";
+    if (deps["@remix-run/react"]) return "Remix";
+    if (deps.gatsby) return "Gatsby";
+    if (deps.nuxt || deps["@nuxt/core"]) return "Nuxt.js";
+    if (deps.vue) return "Vue";
+    if (deps.react) return "React";
+    if (deps.svelte) return "Svelte";
+    if (deps.astro) return "Astro";
+    if (deps.solid || deps["solid-js"]) return "SolidJS";
+    if (deps.qwik || deps["@builder.io/qwik"]) return "Qwik";
 
-  // Web frameworks
-  if (deps.next) return "Next.js";
-  if (deps["@remix-run/react"]) return "Remix";
-  if (deps.gatsby) return "Gatsby";
-  if (deps.nuxt || deps["@nuxt/core"]) return "Nuxt.js";
-  if (deps.vue) return "Vue";
-  if (deps.react) return "React";
-  if (deps.svelte) return "Svelte";
-  if (deps.astro) return "Astro";
-  if (deps.solid || deps["solid-js"]) return "SolidJS";
-  if (deps.qwik || deps["@builder.io/qwik"]) return "Qwik";
+    // Build tools (frontend)
+    if (deps.vite) return "Vite";
 
-  // Build tools (frontend)
-  if (deps.vite) return "Vite";
+    // Backend frameworks
+    if (deps["@nestjs/core"]) return "NestJS";
+    if (deps.fastify) return "Fastify";
+    if (deps.express) return "Express";
+    if (deps.koa) return "Koa";
+    if (deps.hono) return "Hono";
+    if (deps["@hapi/hapi"]) return "Hapi";
 
-  // Backend frameworks
-  if (deps["@nestjs/core"]) return "NestJS";
-  if (deps.fastify) return "Fastify";
-  if (deps.express) return "Express";
-  if (deps.koa) return "Koa";
-  if (deps.hono) return "Hono";
-  if (deps["@hapi/hapi"]) return "Hapi";
+    // MCP / agent SDKs
+    if (deps["@modelcontextprotocol/sdk"]) return "MCP Server";
+    if (deps["@anthropic-ai/claude-agent-sdk"]) return "Claude Agent SDK";
 
-  // MCP / agent SDKs
-  if (deps["@modelcontextprotocol/sdk"]) return "MCP Server";
-  if (deps["@anthropic-ai/claude-agent-sdk"]) return "Claude Agent SDK";
+    // CLI frameworks
+    if (deps.commander) return "Commander CLI";
+    if (deps.yargs) return "Yargs CLI";
+    if (deps["@oclif/core"] || deps.oclif) return "Oclif CLI";
+    if (deps.ink) return "Ink (React CLI)";
 
-  // CLI frameworks
-  if (deps.commander) return "Commander CLI";
-  if (deps.yargs) return "Yargs CLI";
-  if (deps["@oclif/core"] || deps.oclif) return "Oclif CLI";
-  if (deps.ink) return "Ink (React CLI)";
+    if (pkg.bin) return "CLI Tool";
+    if (pkg.main || pkg.exports) return "Library";
+  }
 
-  // If it has a "bin" entry it's likely a CLI
-  if (pkg.bin) return "CLI Tool";
-
-  // Library fallback when it exposes main/exports but nothing app-y
-  if (pkg.main || pkg.exports) return "Library";
+  // Monorepo root fallback: scan sub-projects for framework detection
+  const subFrameworks = scanSubProjectFrameworks(root);
+  if (subFrameworks.length > 0) {
+    // Return the most common framework among sub-projects
+    const freq = new Map<string, number>();
+    for (const fw of subFrameworks) {
+      freq.set(fw, (freq.get(fw) ?? 0) + 1);
+    }
+    const [topFw] = [...freq.entries()].sort((a, b) => b[1] - a[1])[0] ?? [];
+    if (topFw) return `${topFw} (monorepo)`;
+  }
 
   return "unknown";
 }
 
+/** Scan depth-1 sub-directories for package.json to detect monorepo sub-project frameworks */
+function scanSubProjectFrameworks(root: string): string[] {
+  const frameworks: string[] = [];
+  try {
+    const entries = fs.readdirSync(root, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      const subDir = path.join(root, entry.name);
+      const subPkg = readJsonSafe(path.join(subDir, "package.json"));
+      if (!subPkg) continue;
+      const subDeps = { ...(subPkg.dependencies ?? {}), ...(subPkg.devDependencies ?? {}) } as Record<string, string>;
+      if (subDeps.next) frameworks.push("Next.js");
+      else if (subDeps.react) frameworks.push("React");
+      else if (subDeps.vue) frameworks.push("Vue");
+      else if (subDeps.svelte) frameworks.push("Svelte");
+      else if (subDeps.astro) frameworks.push("Astro");
+      else if (subDeps["@nestjs/core"]) frameworks.push("NestJS");
+      else if (subDeps.express) frameworks.push("Express");
+      else if (subDeps.hono) frameworks.push("Hono");
+      else if (subDeps.vite) frameworks.push("Vite");
+      else if (subDeps["@modelcontextprotocol/sdk"]) frameworks.push("MCP Server");
+    }
+  } catch {}
+  return frameworks;
+}
+
 function detectProjectType(root: string): ProjectConventions["projectType"] {
   const pkg = readJsonSafe(path.join(root, "package.json"));
-  if (!pkg) return "unknown";
+  if (pkg) {
+    const pkgDeps = (pkg.dependencies ?? {}) as Record<string, string>;
+    const pkgDevDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
+    const deps: Record<string, string> = { ...pkgDeps, ...pkgDevDeps };
 
-  const pkgDeps = (pkg.dependencies ?? {}) as Record<string, string>;
-  const pkgDevDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
-  const deps: Record<string, string> = { ...pkgDeps, ...pkgDevDeps };
+    if (deps["@modelcontextprotocol/sdk"]) return "mcp-server";
 
-  if (deps["@modelcontextprotocol/sdk"]) return "mcp-server";
+    if (deps.next || deps.react || deps.vue || deps.svelte || deps.astro
+        || deps.gatsby || deps.nuxt || deps["@remix-run/react"] || deps.solid) {
+      return "web-app";
+    }
 
-  if (deps.next || deps.react || deps.vue || deps.svelte || deps.astro
-      || deps.gatsby || deps.nuxt || deps["@remix-run/react"] || deps.solid) {
-    return "web-app";
+    if (deps.express || deps.fastify || deps.koa || deps.hono
+        || deps["@nestjs/core"] || deps["@hapi/hapi"]) {
+      return "backend";
+    }
+
+    if (deps.commander || deps.yargs || deps["@oclif/core"] || deps.oclif || deps.ink) {
+      return "cli";
+    }
+
+    if (pkg.bin) return "cli";
+    if (pkg.main || pkg.exports) return "library";
   }
 
-  if (deps.express || deps.fastify || deps.koa || deps.hono
-      || deps["@nestjs/core"] || deps["@hapi/hapi"]) {
-    return "backend";
-  }
-
-  if (deps.commander || deps.yargs || deps["@oclif/core"] || deps.oclif || deps.ink) {
-    return "cli";
-  }
-
-  if (pkg.bin) return "cli";
-  if (pkg.main || pkg.exports) return "library";
+  // Monorepo root fallback: check sub-projects
+  const subFrameworks = scanSubProjectFrameworks(root);
+  if (subFrameworks.length > 0) return "web-app";
 
   return "unknown";
 }

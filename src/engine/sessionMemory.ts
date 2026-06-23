@@ -164,30 +164,53 @@ export class SessionMemory {
 
   private generateArchitectureMd(): string {
     const conv = this.state.conventions;
-    if (!conv) return `# Architecture\n\nRun project_conventions first to auto-generate this file.`;
+    if (!conv) return `# Architecture\n\nRun project_conventions first to auto-generate.`;
+
+    const stackKeys = ["framework", "projectType", "monorepo", "buildTool", "packageManager"];
     const lines: string[] = [
       "# Architecture",
       "",
-      `Auto-generated from project conventions at ${new Date().toISOString()}`,
+      `Generated at ${new Date().toISOString()}`,
+      "",
+      "## Stack",
       "",
     ];
-    for (const [key, value] of Object.entries(conv)) {
-      lines.push(`- **${key}**: ${JSON.stringify(value)}`);
+    for (const key of stackKeys) {
+      if (conv[key] !== undefined) {
+        lines.push(`- **${key}**: ${JSON.stringify(conv[key])}`);
+      }
     }
+    lines.push("", "## Project Layout", "");
+    if (conv.workspaces) {
+      lines.push(`- Monorepo workspaces: ${JSON.stringify(conv.workspaces)}`);
+    }
+    lines.push(`- Source root: ${conv.srcDir || "src/"}`);
     return lines.join("\n");
   }
 
   private generateConventionsMd(): string {
     const conv = this.state.conventions;
-    if (!conv) return `# Conventions\n\nRun project_conventions first to auto-generate this file.`;
+    if (!conv) return `# Conventions\n\nRun project_conventions first to auto-generate.`;
+
+    const styleKeys = ["testRunner", "styling", "importAlias", "lintConfig", "codeStyle"];
     const lines: string[] = [
       "# Conventions",
       "",
-      `Auto-generated from project conventions at ${new Date().toISOString()}`,
+      `Generated at ${new Date().toISOString()}`,
+      "",
+      "## Code Style",
       "",
     ];
-    for (const [key, value] of Object.entries(conv)) {
-      lines.push(`- **${key}**: ${JSON.stringify(value)}`);
+    for (const key of styleKeys) {
+      if (conv[key] !== undefined) {
+        lines.push(`- **${key}**: ${JSON.stringify(conv[key])}`);
+      }
+    }
+    if (conv.testRunner) {
+      lines.push("", `## Testing\n\n- Test runner: ${conv.testRunner}`);
+    }
+    if (conv.importAlias) {
+      lines.push("", `## Imports\n\n- Alias: \`${conv.importAlias}\``);
     }
     return lines.join("\n");
   }
@@ -206,7 +229,7 @@ export class SessionMemory {
       lines.push(`## ${f.task}`);
       for (const ff of f.failures) {
         if (!ff.resolved) {
-          lines.push(`- ${new Date(ff.timestamp).toISOString()}: ${ff.error.substring(0, 300)}`);
+          lines.push(`- ${new Date(ff.timestamp).toISOString()}: ${ff.error}`);
         }
       }
       lines.push("");
@@ -392,6 +415,16 @@ export class SessionMemory {
       }
     }
 
+    const hasMemories = fs.existsSync(this.memoriesDir());
+    let availableMemories: string[] = [];
+    if (hasMemories) {
+      try {
+        availableMemories = fs.readdirSync(this.memoriesDir())
+          .filter(f => f.endsWith(".md"))
+          .map(f => f.replace(/\.md$/, ""));
+      } catch {}
+    }
+
     return {
       projectRoot: this.state.projectRoot,
       sessionDuration: Math.round((Date.now() - this.state.startTime) / 1000) + "s",
@@ -402,6 +435,8 @@ export class SessionMemory {
       toolCallCount: this.state.toolCalls.length,
       recentSearches: Array.from(this.state.searchResults.keys()).slice(-5),
       hasConventions: !!this.state.conventions,
+      ...(availableMemories.length > 0 ? { availableMemories } : {}),
+      ...(availableMemories.length > 0 ? { hint: `Use get_session_memory({ topic: "<name>" }) to load a specific memory. Topics: ${availableMemories.join(", ")}` } : {}),
     };
   }
 
