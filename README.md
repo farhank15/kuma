@@ -10,7 +10,9 @@
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-18+-339933?logo=nodedotjs)](https://nodejs.org/)
 
-Works with **Claude Code**, **Cursor**, **Gemini CLI**, **GitHub Copilot**, and any MCP-compatible client.
+Works with **13 AI coding agents** — Claude Code, Cursor, Windsurf, GitHub Copilot Editor, Cline, Aider, Antigravity CLI, OpenCode, Codex CLI, Qwen Code, Kiro, OpenClaw, CodeWhale — and any MCP-compatible client.
+
+**No manual config needed.** Just run `npx @plumpslabs/kuma init`.
 
 </div>
 
@@ -18,7 +20,18 @@ Works with **Claude Code**, **Cursor**, **Gemini CLI**, **GitHub Copilot**, and 
 
 ## Quick Start
 
-Add to your MCP client config:
+```bash
+# Generate config files for ALL supported AI agents
+npx @plumpslabs/kuma init --all
+
+# Or generate for specific agents
+npx @plumpslabs/kuma init --cursor --claude --aider
+
+# See all options
+npx @plumpslabs/kuma init --help
+```
+
+Or add Kuma MCP server manually to any MCP client:
 
 ```json
 {
@@ -31,18 +44,30 @@ Add to your MCP client config:
 }
 ```
 
+---
 
-<details>
-<summary><b>Where does this config go?</b></summary>
+## Supported Agents
 
-| Client | Config Location |
-|--------|----------------|
-| **Claude Code** | `~/.claude/settings.json` |
-| **Cursor** | Settings → Features → MCP → Add Server |
-| **Gemini CLI** | `~/.gemini/settings.json` |
-| **Copilot / Codex** | VS Code MCP extension settings |
+`kuma init` generates native config files for **13 AI coding agents** — no manual hunting for file formats:
 
-</details>
+| # | Agent | Generated Files | Approach |
+|---|-------|----------------|----------|
+| 1 | **Claude Code** | `CLAUDE.md` | Fallback instructions (plugin via `/plugin install` is proper) |
+| 2 | **Cursor** | `.cursor/rules/kuma.mdc` | Rule file with YAML frontmatter (`alwaysApply: true`) |
+| 3 | **Windsurf** | `.windsurfrules` | Static rules file |
+| 4 | **GitHub Copilot Editor** | `AGENTS.md` + `.github/skills/kuma/SKILL.md` | AGENTS.md + Skill file |
+| 5 | **Cline** | `.clinerules/kuma.md` | Rule file with `paths` frontmatter |
+| 6 | **Aider** | `CONVENTIONS.md` + `.aider.conf.yml` | Convention file referenced via `read: CONVENTIONS.md` |
+| 7 | **Antigravity CLI** | `.agents/skills/kuma/SKILL.md` + `.agents/mcp_config.json` | Skill (loaded on demand) |
+| 8 | **OpenCode** | `opencode.json` | Plugin config JSON |
+| 9 | **Codex CLI (OpenAI)** | `AGENTS.md` + `.codex/config.toml` | AGENTS.md + MCP server in TOML |
+| 10 | **Qwen Code** | `AGENTS.md` + `settings.json` | AGENTS.md + MCP server in JSON |
+| 11 | **Kiro** | `.kiro/steering/kuma.md` | Steering file with YAML frontmatter (`inclusion: always`) |
+| 12 | **OpenClaw** | `skills/kuma/SKILL.md` | Skill (loaded on demand) |
+| 13 | **CodeWhale** | `skills/kuma/SKILL.md` + `.codewhale/mcp.json` | Skill + MCP server config |
+
+> `AGENTS.md` includes sections for all selected agents that read it (Codex CLI, Qwen Code, GitHub Copilot Editor) — one file, no conflicts.
+> `skills/kuma/SKILL.md` is shared by agents that load skills from workspace root.
 
 ---
 
@@ -64,7 +89,7 @@ Most tools make AI smarter. **Kuma makes AI not break things.**
 
 ---
 
-## Tools (16)
+## Tools (17)
 
 ### 🔍 Context — Understand the codebase
 
@@ -101,6 +126,7 @@ Most tools make AI smarter. **Kuma makes AI not break things.**
 | `search_session_memory` | **Keyword search** across tool calls, memory files, errors, modified files, and dependency graph. |
 | `write_memory` | Persist project knowledge (decisions, glossary) to `.kuma/memories/`. Append, prepend, or overwrite. |
 | `kuma_reflect` | **Reflection tool** — checks if you're on track, detects drift (edits without tests, loops, unresolved failures), and suggests the next action. |
+| `kuma_context` | **Snapshot manager** — save/restore project state (modified files, errors, git diff) before risky operations. |
 
 ---
 
@@ -136,7 +162,7 @@ Most tools make AI smarter. **Kuma makes AI not break things.**
 2. **Safety first** — Every tool has a safety net: timeout, circuit breaker, rollback, sandbox.
 3. **Graceful degradation, not crash** — Every tool has a fallback before it fails. LSP unavailable? Regex. File not found? Show resolved paths. Diff mismatch? Whitespace→fuzzy retry. Test fails? Circuit breaker stops the loop.
 4. **Opinionated workflow** — Tools designed to be used together: `conventions → grep → pick → diff → test → review`.
-5. **Minimal surface** — 16 focused tools. Each tool has one job and does it well. No overlap, no confusion.
+5. **Minimal surface** — 17 focused tools. Each tool has one job and does it well. No overlap, no confusion.
 
 ---
 

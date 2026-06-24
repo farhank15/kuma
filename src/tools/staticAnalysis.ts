@@ -1,8 +1,8 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { getProjectRoot } from "../utils/pathValidator.js";
 import { sessionMemory } from "../engine/sessionMemory.js";
+import { spawnProcess, type ProcessResult } from "../utils/processRunner.js";
 
 // ============================================================
 // STATIC ANALYSIS — Passthrough linter/checker runner
@@ -48,13 +48,11 @@ export async function handleStaticAnalysis(params: StaticAnalysisParams): Promis
 
   sessionMemory.recordToolCall("static_analysis", { tool, files, autoFix });
 
-  // Detect which tools are available
   const availableTools = detectAvailableTools(root);
   if (availableTools.length === 0) {
     return formatNoToolsDetected();
   }
 
-  // Filter tools based on requested tool
   const toolsToRun = tool === "all"
     ? availableTools
     : availableTools.filter((t) => t === tool);
@@ -63,7 +61,6 @@ export async function handleStaticAnalysis(params: StaticAnalysisParams): Promis
     return formatToolNotAvailable(tool, availableTools);
   }
 
-  // Run each tool and collect results
   const allIssues: AnalysisIssue[] = [];
   const results: AnalysisResult[] = [];
 
@@ -172,68 +169,27 @@ function readPackageJson(root: string): Record<string, unknown> | null {
 // TOOL EXECUTION
 // ============================================================
 
-interface ToolOutput {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-}
-
 async function runTool(
   tool: AvailableTool,
   cwd: string,
   files?: string[],
   autoFix?: boolean,
   timeoutSeconds?: number,
-): Promise<ToolOutput | null> {
+): Promise<ProcessResult | null> {
   const cmd = buildToolCommand(tool, files, autoFix);
   if (!cmd) return null;
 
-  return new Promise((resolve) => {
-    const parts = cmd.split(" ");
-    const command = parts[0];
-    const args = parts.slice(1);
-
-    const proc = spawn(command, args, {
-      cwd,
-      shell: process.platform === "win32",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    const timeoutId = setTimeout(() => {
-      proc.kill("SIGTERM");
-      if (process.platform === "win32") {
-        try {
-          spawn("taskkill", ["/pid", String(proc.pid), "/f", "/t"], { stdio: "ignore" });
-        } catch {}
-      }
-    }, (timeoutSeconds ?? 60) * 1000);
-
-    proc.stdout?.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr?.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      clearTimeout(timeoutId);
-      resolve({
-        stdout,
-        stderr,
-        exitCode: code ?? -1,
-      });
-    });
-
-    proc.on("error", () => {
-      clearTimeout(timeoutId);
-      resolve(null);
-    });
+  const result = await spawnProcess(cmd, {
+    cwd,
+    timeoutSeconds: timeoutSeconds ?? 60,
+    maxStdout: 100_000, // Tool output can be large
+    maxStderr: 50_000,
   });
+
+  return result;
 }
+
+
 
 function buildToolCommand(tool: AvailableTool, files?: string[], autoFix?: boolean): string | null {
   const pm = detectPackageManagerPrefix();

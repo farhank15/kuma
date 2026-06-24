@@ -1,7 +1,7 @@
-import { spawn } from "node:child_process";
 import { getProjectRoot } from "../utils/pathValidator.js";
 import { circuitBreaker } from "../utils/errorHandler.js";
 import { sessionMemory } from "../engine/sessionMemory.js";
+import { spawnShell, type ProcessResult } from "../utils/processRunner.js";
 
 // ============================================================
 // SAFE TERMINAL EXEC — Sandboxed terminal runner
@@ -37,7 +37,7 @@ const DANGEROUS_PATTERNS = [
   "format",
   "mkfs",
   "dd if=",
-  ":(){ :|:& };:", // fork bomb
+  ":(){ :|:& };:",
   "curl ",
   "wget ",
 ];
@@ -45,26 +45,17 @@ const DANGEROUS_PATTERNS = [
 export async function handleSafeTerminalExec(params: TerminalExecParams): Promise<string> {
   const { task, customCommand, timeout = 60 } = params;
 
-  // Validate task
   if (task === "custom" && !customCommand) {
     return "Error: Task 'custom' requires the 'customCommand' parameter.";
   }
 
-  // Build command
-  let command: string;
-  if (task === "custom") {
-    command = customCommand!;
-  } else {
-    command = TASK_COMMANDS[task];
-  }
+  const command = task === "custom" ? customCommand! : TASK_COMMANDS[task];
 
-  // Check circuit breaker
   const cbResult = circuitBreaker.check("safe_terminal_exec", { task, command });
   if (!cbResult.allowed) {
     return `⚠️ Circuit breaker: ${cbResult.reason}\n\nFix the code first before running the task again.`;
   }
 
-  // Check dangerous patterns
   const dangerousPattern = DANGEROUS_PATTERNS.find((p) => command.toLowerCase().includes(p.toLowerCase()));
   if (dangerousPattern) {
     return `🚫 BLOCKED: Command contains a dangerous pattern: "${dangerousPattern}".\nThis command is not permitted.`;
@@ -75,13 +66,13 @@ export async function handleSafeTerminalExec(params: TerminalExecParams): Promis
   try {
     sessionMemory.recordToolCall("execute_safe_test", { task, command });
 
-    // Execute with timeout
-    const result = await executeWithTimeout(command, projectRoot, timeout);
+    const result = await spawnShell(command, {
+      cwd: projectRoot,
+      timeoutSeconds: timeout,
+    });
 
-    // Format output
     const output = formatExecResult(result, command, task);
 
-    // Record success/failure
     if (result.exitCode !== 0) {
       sessionMemory.addFailedFile(task, result.stderr || result.stdout);
     }
@@ -89,90 +80,14 @@ export async function handleSafeTerminalExec(params: TerminalExecParams): Promis
     return output;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    const isTimeout = errorMsg.toLowerCase().includes("timeout");
-
-    if (isTimeout) {
+    if (errorMsg.toLowerCase().includes("timeout")) {
       return formatTimeoutResult(command, timeout);
     }
-
     return `Error running "${command}": ${errorMsg}`;
   }
 }
 
-interface ExecResult {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  timedOut: boolean;
-}
-
-async function executeWithTimeout(
-  command: string,
-  cwd: string,
-  timeoutSeconds: number
-): Promise<ExecResult> {
-  return new Promise((resolve, reject) => {
-    const parts = command.split(" ");
-    const cmd = parts[0];
-    const args = parts.slice(1);
-
-    const proc = spawn(cmd, args, {
-      cwd,
-      shell: process.platform === "win32", // Use shell on Windows
-      stdio: ["pipe", "pipe", "pipe"],
-      timeout: timeoutSeconds * 1000,
-    });
-
-    let stdout = "";
-    let stderr = "";
-    let timedOut = false;
-
-    // Timeout handler
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      proc.kill("SIGTERM");
-
-      // Also kill process tree on Windows
-      if (process.platform === "win32") {
-        try {
-          spawn("taskkill", ["/pid", String(proc.pid), "/f", "/t"], { stdio: "ignore" });
-        } catch {
-          // Ignore kill errors
-        }
-      }
-    }, timeoutSeconds * 1000);
-
-    proc.stdout?.on("data", (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr?.on("data", (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    proc.on("close", (code) => {
-      clearTimeout(timeoutId);
-      resolve({
-        stdout: truncateOutput(stdout, 5000),
-        stderr: truncateOutput(stderr, 2000),
-        exitCode: code ?? -1,
-        timedOut,
-      });
-    });
-
-    proc.on("error", (err) => {
-      clearTimeout(timeoutId);
-      reject(err);
-    });
-  });
-}
-
-function truncateOutput(output: string, maxChars: number): string {
-  if (output.length <= maxChars) return output;
-  return output.slice(0, maxChars) + `\n\n[...truncated, ${output.length - maxChars} more characters]`;
-}
-
-function formatExecResult(result: ExecResult, command: string, task: string): string {
+function formatExecResult(result: ProcessResult, command: string, task: string): string {
   const status = result.exitCode === 0 ? "✅ PASS" : "❌ FAIL";
   const lines: string[] = [
     `💻 ${status} — Task: ${task}`,
@@ -220,3 +135,5 @@ function formatTimeoutResult(command: string, timeout: number): string {
     "  - Run the command manually for diagnostics",
   ].join("\n");
 }
+
+

@@ -13,6 +13,8 @@ import { handleGitDiff } from "./tools/gitDiff.js";
 import { handleProjectStructure } from "./tools/projectStructure.js";
 import { handleStaticAnalysis } from "./tools/staticAnalysis.js";
 import { handleReflect } from "./tools/kumaReflect.js";
+import { handleKumaGuard } from "./tools/kumaGuard.js";
+import { handleKumaContext } from "./tools/kumaContext.js";
 
 import { getSessionMemory, handleWriteMemory, searchSessionMemory, MemoryTopic } from "./engine/sessionMemory.js";
 
@@ -26,7 +28,7 @@ export function registerAllTools(server: McpServer): void {
     "smart_grep",
     "Narrow down to the specific code you need. Locates functions or text patterns — returns filename, line number, and 3 lines of context.",
     {
-      query: z.string().min(1).describe("Regex pattern to search for"),
+      query: z.string({ invalid_type_error: 'smart_grep: "query" must be a string regex pattern.\n\n✅ Example: { query: "function handleUser" }' }).min(1).describe("Regex pattern to search for. Example: 'function handleAuth' or 'console\\.log'"),
       targetFolder: z.string().optional().describe("Target folder (default: project root, max depth 3)"),
       maxResults: z.number().min(1).max(100).optional().default(30).describe("Max results to return"),
       extensions: z.array(z.string()).optional().describe("Filter results by file extensions (e.g. ['ts', 'js'])"),
@@ -66,15 +68,17 @@ export function registerAllTools(server: McpServer): void {
     "precise_diff_editor",
     "Edit code with safety net. Search-and-replace with fuzzy fallback + automatic versioned backup. Use action:'rollback' to undo edits.",
     {
-      filePath: z.string().min(1).describe("Path to the file to edit"),
-      action: z.enum(["rollback"]).optional().describe("Set to 'rollback' to restore from backup"),
+      filePath: z.string({ invalid_type_error: 'precise_diff_editor: "filePath" must be a string path relative to project root.\n\n✅ Example: "src/example.ts"' }).min(1).describe("Path to the file to edit"),
+      action: z.enum(["rollback"]).optional().describe("Set to 'rollback' to restore from backup. Only use when restoring from backup."),
       edits: z.array(z.object({
-        searchBlock: z.string().min(1).describe("Code block to replace (MUST be exact or fuzzy match)"),
-        replaceBlock: z.string().describe("Replacement code block"),
+        searchBlock: z.string({ invalid_type_error: '"searchBlock" must be a string of the exact code to replace' }).min(1).describe("Code block to replace (MUST be exact or fuzzy match)"),
+        replaceBlock: z.string({ invalid_type_error: '"replaceBlock" must be a string of the replacement code' }).describe("Replacement code block"),
         allowMultiple: z.boolean().optional().default(false).describe("Allow multiple replacements"),
         fuzzyThreshold: z.number().min(0).max(1).optional().default(0.85).describe("Fuzzy match threshold (0.0-1.0)"),
-      })).min(1).max(10).optional().describe("Array of edits (max 10)"),
-      dryRun: z.boolean().optional().default(false).describe("Preview changes without writing to disk"),
+      }), {
+        invalid_type_error: 'precise_diff_editor: "edits" must be an ARRAY of { searchBlock, replaceBlock } objects.\n\n✅ Correct format:\n{\n  edits: [\n    { searchBlock: "old code", replaceBlock: "new code" }\n  ]\n}',
+      }).min(1).max(10).optional().describe("Array of edits (max 10). Each edit has: searchBlock (code to find), replaceBlock (new code)"),
+      dryRun: z.boolean().optional().default(false).describe("Preview changes without writing to disk. Set dryRun: true to preview first."),
       version: z.union([z.number().min(1), z.literal('list')]).optional().describe("Backup version to restore (1=newest, omit=latest, 'list'=show versions)"),
     },
     async (params) => {
@@ -96,7 +100,10 @@ export function registerAllTools(server: McpServer): void {
         filePath: z.string().min(1).describe("File path to create"),
         content: z.string().describe("File content"),
         instructions: z.string().min(1).describe("Reason for creating the file"),
-      })).min(1).max(15).describe("Array of files to create (max 15)"),
+      }), {
+        invalid_type_error: 'batch_file_writer: "files" must be an ARRAY of objects.\n\n✅ Correct format:\n{\n  files: [\n    { filePath: "src/example.ts", content: "// code", instructions: "reason" }\n  ]\n}',
+        required_error: 'batch_file_writer: "files" is required.\n\n✅ Correct format:\n{\n  files: [\n    { filePath: "src/example.ts", content: "// code", instructions: "reason" }\n  ]\n}',
+      }).min(1).max(15).describe("Array of files to create (max 15). Example: [{ filePath: 'src/x.ts', content: '...', instructions: 'why' }]"),
     },
     async (params) => {
       try {
@@ -113,9 +120,9 @@ export function registerAllTools(server: McpServer): void {
     "execute_safe_test",
     "Run tests, lint, or typecheck with timeout protection and circuit breaker. Use after every edit to verify you didn't break anything.",
     {
-      task: z.enum(["test", "build", "lint", "typecheck", "custom"]).describe("Task to execute"),
-      customCommand: z.string().optional().describe("Custom command (only if task='custom')"),
-      timeout: z.number().min(5).max(180).optional().default(60).describe("Timeout in seconds (default: 60s, max: 180s)"),
+      task: z.enum(["test", "build", "lint", "typecheck", "custom"]).describe("Task to execute: test, build, lint, typecheck, or custom"),
+      customCommand: z.string({ invalid_type_error: '"customCommand" must be a string command like "npm run my-script"' }).optional().describe("Custom command (required only if task='custom')"),
+      timeout: z.number({ invalid_type_error: '"timeout" must be a number in seconds (5-180)' }).min(5).max(180).optional().default(60).describe("Timeout in seconds (default: 60s, max: 180s)"),
     },
     async (params) => {
       try {
@@ -169,7 +176,7 @@ export function registerAllTools(server: McpServer): void {
     "get_session_memory",
     "Check what you've done this session: modified files, unresolved failures, tool history, memories. Accepts optional topic to load a specific memory file.",
     {
-      topic: z.enum(MEMORY_TOPICS).optional().describe("Load a specific memory topic (decisions, glossary, architecture, conventions, known-issues)"),
+      topic: z.enum(MEMORY_TOPICS).optional().describe("Load a specific memory topic: decisions, glossary, architecture, conventions, known-issues. Example: { topic: 'decisions' }"),
     },
     async (params) => {
       try {
@@ -186,11 +193,11 @@ export function registerAllTools(server: McpServer): void {
     "lsp_query",
     "Jump to definition, find references, inspect types, or rename symbols. Uses TypeScript Language Server — falls back to regex when LSP is unavailable.",
     {
-      filePath: z.string().min(1).describe("Path to the file containing the symbol"),
-      line: z.number().min(0).describe("Line number (0-indexed)"),
-      character: z.number().min(0).describe("Character position (0-indexed)"),
-      action: z.enum(["def", "refs", "type", "rename"]).describe("Action: def/go to definition, refs/find references, type/get type info, rename/rename symbol"),
-      newName: z.string().optional().describe("New name (required for action:'rename')"),
+      filePath: z.string({ invalid_type_error: 'lsp_query: "filePath" must be a string path.\n\n✅ Example: { filePath: "src/index.ts", line: 10, character: 5, action: "def" }' }).min(1).describe("Path to the file containing the symbol"),
+      line: z.number({ invalid_type_error: '"line" must be a number (0-indexed). Line 0 = first line.' }).min(0).describe("Line number (0-indexed)"),
+      character: z.number({ invalid_type_error: '"character" must be a number (0-indexed). Position within the line.' }).min(0).describe("Character position (0-indexed)"),
+      action: z.enum(["def", "refs", "type", "rename"]).describe("Action: def=go to definition, refs=find references, type=get type info, rename=rename symbol"),
+      newName: z.string().optional().describe("New name (required for action:'rename'). Example: { action: 'rename', newName: 'newFunctionName' }"),
     },
     async (params) => {
       try {
@@ -315,7 +322,25 @@ export function registerAllTools(server: McpServer): void {
     }
   );
 
-  // 16. static_analysis
+  // 16. kuma_guard
+  server.tool(
+    "kuma_guard",
+    "Context safety net. Checks for anti-patterns (script patching, bash grep), loops, drift (edits without tests, unresolved failures). Run this after every few edits to stay on track.",
+    {
+      check: z.enum(["all", "anti-pattern", "loop", "drift", "context"]).optional().default("all").describe("Check type: all=everything, anti-pattern=script/grep detection, loop=loop detection, drift=edit vs test balance"),
+      goal: z.string({ invalid_type_error: 'kuma_guard: "goal" must be a string describing what you are working on.\n\n✅ Example: { goal: "refactor auth module" }' }).optional().describe("Optional goal to check against. Example: 'refactor auth module'"),
+    },
+    async (params) => {
+      try {
+        const result = await handleKumaGuard(params);
+        return { content: [{ type: "text", text: result }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Error in kuma_guard: ${err}` }], isError: true };
+      }
+    }
+  );
+
+  // 17. static_analysis
   server.tool(
     "static_analysis",
     "Runs available linters/checkers (ESLint, TypeScript, Prettier, Ruff) and parses output into structured results. Auto-detects tools from project config.",
@@ -335,5 +360,23 @@ export function registerAllTools(server: McpServer): void {
     }
   );
 
-  console.error("[Manifest] Registered 16 tools.");
+  // 18. kuma_context
+  server.tool(
+    "kuma_context",
+    "Context snapshot manager. Save a snapshot of current project state (modified files, errors, git diff) or list previous snapshots. Run this before risky operations to have a restore point.",
+    {
+      action: z.enum(["save", "list"]).describe("Action: save=create a snapshot, list=show all snapshots"),
+      goal: z.string().optional().describe("Optional goal to associate with the snapshot"),
+    },
+    async (params) => {
+      try {
+        const result = await handleKumaContext(params);
+        return { content: [{ type: "text", text: result }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Error in kuma_context: ${err}` }], isError: true };
+      }
+    }
+  );
+
+  console.error("[Manifest] Registered 17 tools.");
 }

@@ -31,6 +31,10 @@ const DEFAULT_IGNORE = [
   "*.log",
 ];
 
+// Result cache: keyed by params hash
+const treeCache = new Map<string, { result: string; timestamp: number }>();
+const CACHE_TTL_MS = 60_000; // 1 minute
+
 export async function handleProjectStructure(params: ProjectStructureParams): Promise<string> {
   const {
     depth = 3,
@@ -41,6 +45,14 @@ export async function handleProjectStructure(params: ProjectStructureParams): Pr
 
   const root = getProjectRoot();
   const clampedDepth = Math.max(1, Math.min(depth, 6));
+
+  // Check cache
+  const cacheKey = `${root}:${clampedDepth}:${folderOnly}:${includePattern ?? ""}:${excludePattern ?? ""}`;
+  const cached = treeCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    sessionMemory.recordToolCall("project_structure", { depth: clampedDepth, folderOnly, cached: true });
+    return cached.result;
+  }
 
   sessionMemory.recordToolCall("project_structure", { depth: clampedDepth, folderOnly });
 
@@ -58,7 +70,9 @@ export async function handleProjectStructure(params: ProjectStructureParams): Pr
       "Use folderOnly: true for high-level overview.",
     ];
 
-    return lines.join("\n");
+    const result = lines.join("\n");
+    treeCache.set(cacheKey, { result, timestamp: Date.now() });
+    return result;
   } catch (err) {
     return "Error building project structure: " + (err instanceof Error ? err.message : String(err));
   }

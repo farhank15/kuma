@@ -1,6 +1,5 @@
-import child_process from "node:child_process";
-import { getProjectRoot } from "../utils/pathValidator.js";
 import { sessionMemory } from "../engine/sessionMemory.js";
+import { runGitCommand } from "../utils/gitUtils.js";
 
 // ============================================================
 // GIT DIFF — Structured diff output
@@ -16,21 +15,16 @@ interface GitDiffParams {
 
 export async function handleGitDiff(params: GitDiffParams): Promise<string> {
   const { filePath, staged = false, contextLines = 3, baseRef, targetRef } = params;
-  const root = getProjectRoot();
 
   try {
-    // Build git diff command
     let command = "git diff";
 
-    // Staged vs unstaged
     if (staged) {
       command += " --cached";
     }
 
-    // Context lines
     command += " -U" + Math.max(1, Math.min(contextLines, 20));
 
-    // Ref range
     if (baseRef) {
       command += " " + baseRef;
       if (targetRef) {
@@ -38,16 +32,11 @@ export async function handleGitDiff(params: GitDiffParams): Promise<string> {
       }
     }
 
-    // File filter
     if (filePath) {
       command += ' -- "' + filePath + '"';
     }
 
-    const stdout = child_process.execSync(command, {
-      cwd: root,
-      encoding: "utf-8",
-      maxBuffer: 2 * 1024 * 1024,
-    });
+    const stdout = runGitCommand(command);
 
     sessionMemory.recordToolCall("git_diff", { filePath, staged, baseRef, targetRef });
 

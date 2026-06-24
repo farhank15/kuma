@@ -1,6 +1,5 @@
-import child_process from "node:child_process";
-import { getProjectRoot } from "../utils/pathValidator.js";
 import { sessionMemory } from "../engine/sessionMemory.js";
+import { runGitCommand } from "../utils/gitUtils.js";
 
 // ============================================================
 // GIT LOG — Get structured commit history
@@ -13,7 +12,6 @@ interface GitLogParams {
 
 export async function handleGitLog(params: GitLogParams): Promise<string> {
   const { maxCount = 10, filePath } = params;
-  const root = getProjectRoot();
 
   try {
     let command = `git log -n ${maxCount} --oneline`;
@@ -21,10 +19,7 @@ export async function handleGitLog(params: GitLogParams): Promise<string> {
       command += ` -- "${filePath}"`;
     }
 
-    const stdout = child_process.execSync(command, {
-      cwd: root,
-      encoding: "utf-8",
-    });
+    const stdout = runGitCommand(command);
 
     sessionMemory.recordToolCall("git_log", { maxCount, filePath });
 

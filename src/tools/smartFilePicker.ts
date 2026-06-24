@@ -18,7 +18,9 @@ interface SmartFilePickerParams {
 const MAX_FILE_SIZE = 1_000_000; // 1MB
 const CHUNK_THRESHOLD = 300; // lines
 
-export async function handleSmartFilePicker(params: SmartFilePickerParams): Promise<string> {
+export async function handleSmartFilePicker(
+  params: SmartFilePickerParams,
+): Promise<string> {
   const { filePath, startLine, endLine, chunkStrategy = "smart" } = params;
 
   // Path validation
@@ -37,16 +39,24 @@ export async function handleSmartFilePicker(params: SmartFilePickerParams): Prom
     if (!path.isAbsolute(filePath)) {
       const cwdPath = path.resolve(process.cwd(), filePath);
       suggestion =
-        "Path resolved to: " + resolvedPath + "\n" +
-        "CWD: " + process.cwd() + "\n" +
-        "Project root: " + projectRoot + "\n" +
-        "Hint: Try path relative to project root, or relative to CWD (" + cwdPath + ")\n" +
+        "Path resolved to: " +
+        resolvedPath +
+        "\n" +
+        "CWD: " +
+        process.cwd() +
+        "\n" +
+        "Project root: " +
+        projectRoot +
+        "\n" +
+        "Hint: Try path relative to project root, or relative to CWD (" +
+        cwdPath +
+        ")\n" +
         "Try smart_grep first to locate the correct file.";
     } else {
       suggestion = "File does not exist. Try smart_grep to locate it.";
     }
 
-    return "Error: File not found: \"" + filePath + "\".\n" + suggestion;
+    return 'Error: File not found: "' + filePath + '".\n' + suggestion;
   }
 
   const stat = fs.statSync(resolvedPath);
@@ -54,7 +64,9 @@ export async function handleSmartFilePicker(params: SmartFilePickerParams): Prom
   // Check file size
   if (stat.size > MAX_FILE_SIZE) {
     return (
-      "Error: File too large (" + (stat.size / 1024 / 1024).toFixed(1) + "MB). Max 1MB.\n" +
+      "Error: File too large (" +
+      (stat.size / 1024 / 1024).toFixed(1) +
+      "MB). Max 1MB.\n" +
       "Use smart_grep to find specific content instead."
     );
   }
@@ -64,7 +76,11 @@ export async function handleSmartFilePicker(params: SmartFilePickerParams): Prom
     const lines = content.split("\n");
     const totalLines = lines.length;
 
-    sessionMemory.recordToolCall("smart_file_picker", { filePath, chunkStrategy, totalLines });
+    sessionMemory.recordToolCall("smart_file_picker", {
+      filePath,
+      chunkStrategy,
+      totalLines,
+    });
 
     // Explicit range
     if (startLine !== undefined || endLine !== undefined) {
@@ -86,10 +102,21 @@ export async function handleSmartFilePicker(params: SmartFilePickerParams): Prom
       case "smart":
         return handleSmartStrategy(filePath, lines, totalLines);
       default:
-        return formatOutput(filePath, lines.slice(0, CHUNK_THRESHOLD), 1, totalLines, true);
+        return formatOutput(
+          filePath,
+          lines.slice(0, CHUNK_THRESHOLD),
+          1,
+          totalLines,
+          true,
+        );
     }
   } catch (err) {
-    return "Error reading file \"" + filePath + "\": " + (err instanceof Error ? err.message : String(err));
+    return (
+      'Error reading file "' +
+      filePath +
+      '": ' +
+      (err instanceof Error ? err.message : String(err))
+    );
   }
 }
 
@@ -98,13 +125,17 @@ function formatOutput(
   lines: string[],
   startLine: number,
   totalLines: number,
-  truncated: boolean
+  truncated: boolean,
 ): string {
   const header = [
     "File: " + filePath,
     totalLines + " total lines",
     truncated
-      ? "Showing " + lines.length + " lines (file >" + CHUNK_THRESHOLD + " lines). Use startLine/endLine for a specific range."
+      ? "Showing " +
+        lines.length +
+        " lines (file >" +
+        CHUNK_THRESHOLD +
+        " lines). Use startLine/endLine for a specific range."
       : "",
     "",
   ]
@@ -127,7 +158,7 @@ function formatOutput(
 async function handleOutlineStrategy(
   filePath: string,
   lines: string[],
-  totalLines: number
+  totalLines: number,
 ): Promise<string> {
   // Outline: only imports + exported symbols
   const importLines: string[] = [];
@@ -137,10 +168,20 @@ async function handleOutlineStrategy(
     const line = lines[i].trim();
 
     // Skip comments
-    if (line.startsWith("//") || line.startsWith("#") || line.startsWith("/*") || line.startsWith("*")) continue;
+    if (
+      line.startsWith("//") ||
+      line.startsWith("#") ||
+      line.startsWith("/*") ||
+      line.startsWith("*")
+    )
+      continue;
 
     // Imports
-    if (line.startsWith("import ") || line.startsWith("from ") || line.startsWith("require(")) {
+    if (
+      line.startsWith("import ") ||
+      line.startsWith("from ") ||
+      line.startsWith("require(")
+    ) {
       importLines.push(line);
       continue;
     }
@@ -170,13 +211,15 @@ async function handleOutlineStrategy(
     "",
     "Imports:",
     ...importLines.slice(0, 30).map((l) => "  " + l.substring(0, 150)),
-    importLines.length > 30 ? "  ...and " + (importLines.length - 30) + " more imports" : "",
+    importLines.length > 30
+      ? "  ...and " + (importLines.length - 30) + " more imports"
+      : "",
     "",
     "Exports & Declarations:",
     ...exportLines.map((e) => "  [L" + e.line + "] " + e.text),
     "",
     "Pass startLine/endLine to read a specific range.",
-    "Or use chunkStrategy: \"full\" to read the entire file.",
+    'Or use chunkStrategy: "full" to read the entire file.',
   ]
     .filter(Boolean)
     .join("\n");
@@ -187,7 +230,7 @@ async function handleOutlineStrategy(
 async function handleSmartStrategy(
   filePath: string,
   lines: string[],
-  totalLines: number
+  totalLines: number,
 ): Promise<string> {
   // Smart: send header (imports) + key signatures + tail
   // Gives the model enough context without overloading tokens
@@ -205,12 +248,17 @@ async function handleSmartStrategy(
   // Function/class signatures from the middle
   if (headerEnd < tailStart) {
     smartLines.push({ line: -1, text: "" });
-    smartLines.push({ line: -1, text: "  ... " + (tailStart - headerEnd) + " lines hidden ..." });
+    smartLines.push({
+      line: -1,
+      text: "  ... " + (tailStart - headerEnd) + " lines hidden ...",
+    });
     smartLines.push({ line: -1, text: "" });
   }
 
   // Key declarations
-  const keyDeclarations = extractKeyDeclarations(lines.slice(headerEnd, tailStart));
+  const keyDeclarations = extractKeyDeclarations(
+    lines.slice(headerEnd, tailStart),
+  );
   for (const decl of keyDeclarations) {
     smartLines.push({ line: decl.line + 1 + headerEnd, text: decl.text });
   }
@@ -228,7 +276,7 @@ async function handleSmartStrategy(
     "File: " + filePath,
     totalLines + " total lines (SMART MODE - header + signatures + tail)",
     "Pass startLine/endLine to read a specific range.",
-    "Or use chunkStrategy: \"full\" to read the entire file.",
+    'Or use chunkStrategy: "full" to read the entire file.',
     "",
   ].join("\n");
 
@@ -258,7 +306,13 @@ function findHeaderEnd(lines: string[]): number {
       line.startsWith("*") ||
       line === ""
     ) {
-      if (!line.startsWith("//") && !line.startsWith("#") && !line.startsWith("/*") && !line.startsWith("*") && line !== "") {
+      if (
+        !line.startsWith("//") &&
+        !line.startsWith("#") &&
+        !line.startsWith("/*") &&
+        !line.startsWith("*") &&
+        line !== ""
+      ) {
         lastImportLine = i;
       }
     } else {
@@ -269,7 +323,9 @@ function findHeaderEnd(lines: string[]): number {
   return Math.max(lastImportLine + 1, 10);
 }
 
-function extractKeyDeclarations(lines: string[]): Array<{ line: number; text: string }> {
+function extractKeyDeclarations(
+  lines: string[],
+): Array<{ line: number; text: string }> {
   const decls: Array<{ line: number; text: string }> = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -280,7 +336,9 @@ function extractKeyDeclarations(lines: string[]): Array<{ line: number; text: st
 
     // Match function/class/interface/exports declarations
     if (
-      /^(export\s+)?(async\s+)?(function|class|interface|type|enum|const|let|var|def)\s/.test(line)
+      /^(export\s+)?(async\s+)?(function|class|interface|type|enum|const|let|var|def)\s/.test(
+        line,
+      )
     ) {
       decls.push({ line: i, text: line.substring(0, 150) });
     }
