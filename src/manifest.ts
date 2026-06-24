@@ -118,11 +118,13 @@ export function registerAllTools(server: McpServer): void {
   // 5. execute_safe_test
   server.tool(
     "execute_safe_test",
-    "Run tests, lint, or typecheck with timeout protection and circuit breaker. Use after every edit to verify you didn't break anything.",
+    "Run tests, lint, or typecheck with timeout protection and circuit breaker. Supports monorepo workspaces via 'workspace' or relative 'cwd'. Use after every edit to verify you didn't break anything.",
     {
       task: z.enum(["test", "build", "lint", "typecheck", "custom"]).describe("Task to execute: test, build, lint, typecheck, or custom"),
       customCommand: z.string({ invalid_type_error: '"customCommand" must be a string command like "npm run my-script"' }).optional().describe("Custom command (required only if task='custom')"),
       timeout: z.number({ invalid_type_error: '"timeout" must be a number in seconds (5-180)' }).min(5).max(180).optional().default(60).describe("Timeout in seconds (default: 60s, max: 180s)"),
+      cwd: z.string().optional().describe("Relative directory from project root (e.g. 'packages/web'). Defaults to project root."),
+      workspace: z.string().optional().describe("Workspace name from project_conventions (e.g. 'frontend', 'api'). Auto-resolves to path."),
     },
     async (params) => {
       try {

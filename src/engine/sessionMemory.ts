@@ -497,6 +497,11 @@ export class SessionMemory {
     return results.slice(0, limit);
   }
 
+  getConventions(): Record<string, unknown> | undefined {
+    this.ensureInit();
+    return this.state.conventions;
+  }
+
   pruneMemory(): void {
     this.ensureInit();
     this.state.toolCalls = this.state.toolCalls.slice(-3);

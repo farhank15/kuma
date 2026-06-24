@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { getProjectRoot } from "../utils/pathValidator.js";
 import { circuitBreaker } from "../utils/errorHandler.js";
 import { sessionMemory } from "../engine/sessionMemory.js";
@@ -11,6 +13,8 @@ interface TerminalExecParams {
   task: "test" | "build" | "lint" | "typecheck" | "custom";
   customCommand?: string;
   timeout?: number;
+  cwd?: string;
+  workspace?: string;
 }
 
 // Map task → command
@@ -43,7 +47,7 @@ const DANGEROUS_PATTERNS = [
 ];
 
 export async function handleSafeTerminalExec(params: TerminalExecParams): Promise<string> {
-  const { task, customCommand, timeout = 60 } = params;
+  const { task, customCommand, timeout = 60, cwd: inputCwd, workspace } = params;
 
   if (task === "custom" && !customCommand) {
     return "Error: Task 'custom' requires the 'customCommand' parameter.";
@@ -63,15 +67,50 @@ export async function handleSafeTerminalExec(params: TerminalExecParams): Promis
 
   const projectRoot = getProjectRoot();
 
+  // Resolve working directory
+  let workingDir = projectRoot;
+  let resolvedFrom = "root";
+
+  if (workspace) {
+    // Resolve workspace name → path from project_conventions
+    const conventions = sessionMemory.getConventions();
+    const workspaces = conventions?.workspaces as Array<{ path: string; name: string }> | undefined;
+    const matched = workspaces?.find(w => w.name === workspace || w.path === workspace);
+    if (matched) {
+      workingDir = path.resolve(projectRoot, matched.path);
+      resolvedFrom = `workspace "${matched.name}" → ${matched.path}`;
+    } else {
+      return `⚠️ Workspace "${workspace}" not found. Run project_conventions first to detect workspaces, or use 'cwd' parameter with a direct path.
+
+Available workspaces: ${workspaces?.map(w => `"${w.name}" (${w.path})`).join(", ") || "none detected"}`;
+    }
+  } else if (inputCwd) {
+    // Resolve relative path from project root
+    const resolved = path.resolve(projectRoot, inputCwd);
+    const normalizedResolved = path.normalize(resolved).toLowerCase();
+    const normalizedRoot = path.normalize(projectRoot).toLowerCase();
+
+    if (!normalizedResolved.startsWith(normalizedRoot)) {
+      return `🚫 BLOCKED: Path "${inputCwd}" resolves outside project root "${projectRoot}".`;
+    }
+
+    if (!fs.existsSync(resolved)) {
+      return `⚠️ Directory "${inputCwd}" does not exist at "${resolved}".`;
+    }
+
+    workingDir = resolved;
+    resolvedFrom = `cwd: ${inputCwd}`;
+  }
+
   try {
-    sessionMemory.recordToolCall("execute_safe_test", { task, command });
+    sessionMemory.recordToolCall("execute_safe_test", { task, command, cwd: workingDir });
 
     const result = await spawnShell(command, {
-      cwd: projectRoot,
+      cwd: workingDir,
       timeoutSeconds: timeout,
     });
 
-    const output = formatExecResult(result, command, task);
+    const output = formatExecResult(result, command, task, resolvedFrom);
 
     if (result.exitCode !== 0) {
       sessionMemory.addFailedFile(task, result.stderr || result.stdout);
@@ -87,11 +126,12 @@ export async function handleSafeTerminalExec(params: TerminalExecParams): Promis
   }
 }
 
-function formatExecResult(result: ProcessResult, command: string, task: string): string {
+function formatExecResult(result: ProcessResult, command: string, task: string, resolvedFrom?: string): string {
   const status = result.exitCode === 0 ? "✅ PASS" : "❌ FAIL";
   const lines: string[] = [
     `💻 ${status} — Task: ${task}`,
     `$ ${command}`,
+    ...(resolvedFrom ? [`📍 ${resolvedFrom}`] : []),
     `Exit code: ${result.exitCode}`,
     `Duration: ${result.timedOut ? "TIMEOUT" : "completed"}`,
     "",
