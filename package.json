@@ -1,6 +1,6 @@
 {
   "name": "@plumpslabs/kuma",
-  "version": "2.1.2",
+  "version": "2.1.3",
   "description": "Zero-setup safety toolkit for AI coding agents. MCP server with code review, git analysis, file editing, session memory, and static analysis — works with Claude Code, Cursor, Gemini CLI.",
   "type": "module",
   "main": "dist/index.js",
@@ -56,7 +56,7 @@
     "git-diff",
     "cli"
   ],
-"repository": {
+  "repository": {
     "type": "git",
     "url": "git+https://github.com/plumpslabs/kuma.git"
   },
