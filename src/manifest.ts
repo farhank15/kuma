@@ -15,6 +15,7 @@ import { handleStaticAnalysis } from "./tools/staticAnalysis.js";
 import { handleReflect } from "./tools/kumaReflect.js";
 import { handleKumaGuard } from "./tools/kumaGuard.js";
 import { handleKumaContext } from "./tools/kumaContext.js";
+import { handleKumaInit } from "./tools/kumaInit.js";
 
 import { getSessionMemory, handleWriteMemory, searchSessionMemory, MemoryTopic } from "./engine/sessionMemory.js";
 
@@ -380,5 +381,22 @@ export function registerAllTools(server: McpServer): void {
     }
   );
 
-  console.error("[Manifest] Registered 17 tools.");
+  // 18. kuma_init (index 0 — register first so AI sees it early)
+  server.tool(
+    "kuma_init",
+    "**Call this FIRST** in every new session. Loads project context: rules from .kuma/init.md, memories from .kuma/memories/, and previous session state. After this, you can work without re-detecting conventions.",
+    {
+      projectRoot: z.string().optional().describe("Project root path (auto-detected if omitted)"),
+    },
+    async (params) => {
+      try {
+        const result = await handleKumaInit(params);
+        return { content: [{ type: "text", text: result }] };
+      } catch (err) {
+        return { content: [{ type: "text", text: `Error in kuma_init: ${err}` }], isError: true };
+      }
+    }
+  );
+
+  console.error("[Manifest] Registered 18 tools.");
 }

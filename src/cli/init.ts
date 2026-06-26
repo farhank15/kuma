@@ -72,103 +72,26 @@ function configFilePath(type: ConfigType): string {
 }
 
 // ============================================================
-// TEMPLATES
+// TEMPLATES — Thin bootstrap (rules moved to .kuma/init.md)
 // ============================================================
 
-const CORE_RULES = [
-  "## AI Agent Usage Guidelines",
-  "",
-  "Kuma MCP tools are available. Use them correctly:",
-  "",
-  "### Code Search",
-  "- Use the **smart_grep** tool to search code - NOT bash grep/ripgrep manually",
-  "- smart_grep returns line numbers + context, caches results, respects .gitignore",
-  '- **Example:** smart_grep({ query: "function handleAuth", extensions: [\'ts\'] })',
-  "",
-  "### Reading Code",
-  "- Use the **smart_file_picker** tool to read files with smart chunking",
-  "- For large files, use startLine/endLine to read specific ranges",
-  '- **Example:** smart_file_picker({ filePath: "src/index.ts", chunkStrategy: "outline" })',
-  '- **Example:** smart_file_picker({ filePath: "src/index.ts", startLine: 10, endLine: 30 })',
-  "",
-  "### Editing Code",
-  "- Use the **precise_diff_editor** tool to edit files (fuzzy matching + auto-backup)",
-  "- DO NOT create Python/Node scripts to patch files; use precise_diff_editor directly",
-  "- DO NOT use bash sed/cat/awk to modify source files",
-  '- **Example:** precise_diff_editor({ filePath: "src/app.ts", edits: [{ searchBlock: "old code", replaceBlock: "new code" }] })',
-  '- **Example:** precise_diff_editor({ filePath: "src/app.ts", dryRun: true, edits: [...] })',
-  '- **Example:** precise_diff_editor({ filePath: "src/app.ts", action: "rollback" })',
-  "",
-  "### Creating Files",
-  "- Use the **batch_file_writer** tool to create new files (up to 15 at once)",
-  '- **Example:** batch_file_writer({ files: [{ filePath: "src/util.ts", content: "// code", instructions: "reason for creating" }] })',
-  "",
-  "### Running Tasks",
-  "- Use the **execute_safe_test** tool for test/build/lint/typecheck",
-  "- Always run typecheck after editing TypeScript files",
-  '- **Example:** execute_safe_test({ task: "typecheck" })',
-  '- **Example:** execute_safe_test({ task: "custom", customCommand: "npm run lint" })',
-  "",
-  "### Code Review",
-  "- Use the **code_reviewer** tool after changes",
-  "- Supports focus: correctness, security, performance, over-engineering",
-  '- **Example:** code_reviewer({ focus: "security" })',
-  "- **Example:** code_reviewer({ files: [\"src/auth.ts\"], format: \"json\" })",
-  "",
-  "### Git Operations",
-  "- Use the **git_diff** tool for structured diff output",
-  "- Use the **git_log** tool for commit history",
-  '- **Example:** git_log({ maxCount: 5 })',
-  '- **Example:** git_diff({ staged: true })',
-  "",
-  "### Session Awareness",
-  "- Use the **kuma_reflect** tool to check on-track/drift/loops",
-  "- Use the **kuma_guard** tool for deeper safety checks (anti-patterns, auto-detection)",
-  "- Use the **get_session_memory** tool to recall session state",
-  '- **Example:** kuma_reflect({ goal: "refactor auth" })',
-  '- **Example:** kuma_guard({ check: "all", goal: "refactor auth" })',
-  "",
-  "### LSP / Code Intelligence",
-  "- Use the **lsp_query** tool for go-to-definition, find references, type info",
-  '- **Example:** lsp_query({ filePath: "src/index.ts", line: 5, character: 10, action: "def" })',
-  '- **Example:** lsp_query({ filePath: "src/index.ts", line: 5, character: 10, action: "refs" })',
-  "",
-  "### Static Analysis",
-  "- Use the **static_analysis** tool to run ESLint/TSC/Prettier/Ruff",
-  '- **Example:** static_analysis({ tool: "eslint", autoFix: true })',
-  "",
-  "### Project Structure",
-  "- Use the **project_structure** tool to see project layout",
-  '- **Example:** project_structure({ depth: 2, folderOnly: true })',
-  "",
-  "### Write Memory",
-  "- Use the **write_memory** tool to persist decisions and glossary",
-  '- **Example:** write_memory({ topic: "decisions", content: "## Reason for using X" })',
-  "",
-  "### General Rules",
-  "- When you error, READ the error carefully before acting",
-  "- After 3+ edits without running tests, stop and verify",
-  "- If a tool fails, check the message - don't retry blindly",
-  "- Detect conventions first with the **project_conventions** tool",
-  '- **Example:** project_conventions({ forceRescan: true })',
+/** Thin bootstrap snippet — shared across all config files */
+const BOOTSTRAP_LINES = [
+  "Kuma MCP tools are installed. All behavioral rules are in `.kuma/init.md`.",
+  "**Before coding, call `kuma_init()`** to load project context and session memory.",
+  "Project knowledge persists in `.kuma/memories/*.md` across sessions.",
 ].join("\n");
 
-const KUMA_CORE_INSTRUCTIONS = CORE_RULES;
+const KUMA_CORE_INSTRUCTIONS = BOOTSTRAP_LINES;
 
 function claudeTemplate(): string {
   return [
-    "# Kuma AI Agent Guidelines",
+    "# Kuma MCP",
     "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "## Workflow Pipeline",
-    "",
-    "For best results:",
-    "1. **project_conventions** - detect stack",
-    "2. **smart_grep** / **smart_file_picker** - understand code",
-    "3. **precise_diff_editor** / **batch_file_writer** - make changes",
-    "4. **execute_safe_test** - verify (typecheck + test)",
-    "5. **code_reviewer** - review changes",
+    "📖 Rules: `.kuma/init.md`",
+    "🧠 Memories: `.kuma/memories/*.md`",
   ].join("\n");
 }
 
@@ -176,26 +99,19 @@ function claudeTemplate(): string {
 function cursorRulesTemplate(): string {
   return [
     "---",
-    "description: Kuma MCP tool usage rules for AI coding agents",
+    "description: Kuma MCP — .kuma/ is the single source of truth",
     "alwaysApply: true",
     "---",
     "",
-    "You are an expert engineer. Kuma MCP tools are available.",
-    "",
-    "## Critical Rules",
-    "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "## NEVER",
-    "- Never create Python/Node scripts to patch code",
-    "- Never use bash sed/cat/awk to edit source files",
-    "- Never run git push/git commit through bash",
+    "📖 Read `.kuma/init.md` for detailed rules.",
   ].join("\n");
 }
 
 function windsurfRulesTemplate(): string {
   return [
-    "# Windsurf Cascade Rules with Kuma",
+    "# Kuma MCP — Windsurf",
     "",
     KUMA_CORE_INSTRUCTIONS,
   ].join("\n");
@@ -204,16 +120,9 @@ function windsurfRulesTemplate(): string {
 /** Copilot Editor AGENTS.md section */
 function copilotTemplate(): string {
   return [
-    "## GitHub Copilot Editor",
-    "",
-    "Kuma MCP tools are available. Use them correctly:",
+    "## Kuma MCP",
     "",
     KUMA_CORE_INSTRUCTIONS,
-    "",
-    "### Copilot Editor-Specific",
-    "- Copilot Editor reads AGENTS.md at project root for persistent instructions",
-    "- Configure MCP servers via VS Code settings (cmd+shift+P → Developer: Reload Window after adding Kuma)",
-    "- Use kuma_guard periodically to check for anti-patterns",
   ].join("\n");
 }
 
@@ -221,21 +130,21 @@ function copilotTemplate(): string {
 function clineRulesTemplate(): string {
   return [
     "---",
-    "description: Kuma MCP tool usage rules for AI coding agents",
+    "description: Kuma MCP — .kuma/ is the single source of truth",
     "paths:",
     "  - \"*\"",
     "---",
     "",
     KUMA_CORE_INSTRUCTIONS,
+    "",
+    "📖 Read `.kuma/init.md` for detailed rules.",
   ].join("\n");
 }
 
 /** Aider CONVENTIONS.md template (referenced from .aider.conf.yml via read:) */
 function aiderTemplate(): string {
   return [
-    "# Kuma MCP - Aider Coding Conventions",
-    "",
-    "These conventions are loaded by Aider via the `read:` field in .aider.conf.yml",
+    "# Kuma MCP",
     "",
     KUMA_CORE_INSTRUCTIONS,
   ].join("\n");
@@ -244,6 +153,7 @@ function aiderTemplate(): string {
 /** OpenCode opencode.json template */
 function opencodeTemplate(): string {
   const config = {
+    $schema: "https://opencode-ai.github.io/schema.json",
     mcp: {
       kuma: {
         type: "local",
@@ -251,11 +161,11 @@ function opencodeTemplate(): string {
         enabled: true,
       },
     },
-    instructions: ["CLAUDE.md"],
+    instructions: [".kuma/init.md"],
   };
   const header = [
     "// Generated by Kuma MCP - https://github.com/plumpslabs/kuma",
-    "// OpenCode config with Kuma MCP tools. Edit opencode.json to customize.",
+    "// OpenCode config with Kuma MCP tools.",
     "",
   ].join("\n");
   return header + JSON.stringify(config, null, 2) + "\n";
@@ -264,16 +174,11 @@ function opencodeTemplate(): string {
 /** Codex CLI AGENTS.md section */
 function codexTemplate(): string {
   return [
-    "## Codex CLI (OpenAI)",
-    "",
-    "Kuma MCP tools are available. Use them correctly:",
+    "## Kuma MCP",
     "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "### Codex-Specific",
-    "- Codex uses cascading AGENTS.md files (global ~/.codex/AGENTS.md -> project AGENTS.md)",
-    "- MCP config is in .codex/config.toml (auto-generated by kuma init)",
-    "- Use kuma_guard periodically to check for anti-patterns",
+    "📖 Rules: `.kuma/init.md`",
   ].join("\n");
 }
 
@@ -293,16 +198,11 @@ function codexConfigTomlTemplate(): string {
 /** Qwen Code AGENTS.md section */
 function qwenTemplate(): string {
   return [
-    "## Qwen Code",
-    "",
-    "Kuma MCP tools are available. Use them correctly:",
+    "## Kuma MCP",
     "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "### Qwen-Specific",
-    "- Qwen reads AGENTS.md at project root for persistent instructions",
-    "- MCP config is in settings.json (auto-generated by kuma init)",
-    "- Use kuma_guard periodically to check for anti-patterns",
+    "📖 Rules: `.kuma/init.md`",
   ].join("\n");
 }
 
@@ -325,66 +225,43 @@ function kiroRulesTemplate(): string {
   return [
     "---",
     "name: kuma-mcp",
-    "description: Kuma safety toolkit - use smart_grep for search, precise_diff_editor for edits",
+    "description: Kuma MCP — .kuma/ is the single source of truth",
     "inclusion: always",
     "---",
     "",
-    "# Kuma MCP - Kiro Steering",
-    "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "## Kiro-Specific",
-    "- Kiro reads steering files from .kiro/steering/ for project instructions",
-    "- Configure MCP servers via IDE settings or global Kiro config",
-    "- Use kuma_guard periodically to check for anti-patterns",
+    "📖 Read `.kuma/init.md` for detailed rules.",
   ].join("\n");
 }
 
-/** OpenClaw skills/kuma/SKILL.md template (skill di-load saat dibutuhkan) */
+/** OpenClaw skills/kuma/SKILL.md template */
 function openclawSkillTemplate(): string {
   return [
     "---",
     "name: kuma-mcp",
-    "description: Kuma safety toolkit for AI coding agents. Use smart_grep for search, precise_diff_editor for edits, execute_safe_test for verification.",
+    "description: Kuma MCP — .kuma/ is the single source of truth",
     "---",
-    "",
-    "# Kuma MCP - OpenClaw Skill",
     "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "## OpenClaw-Specific",
-    "- OpenClaw loads skills/ from workspace root or ~/.openclaw/skills for global",
-    "- Configure Kuma MCP server via ~/.openclaw/openclaw.json or agents standard",
-    "- Use kuma_guard periodically to check for anti-patterns",
-    "",
-    "## Verification",
-    "- After edits, run execute_safe_test to verify no breakage",
-    "- Use code_reviewer for correctness/security review",
-    "- Check kuma_reflect to confirm on-track",
+    "📖 Read `.kuma/init.md` for detailed rules.",
+    "🧠 Memories: `.kuma/memories/*.md`",
   ].join("\n");
 }
 
-/** CodeWhale skills/kuma/SKILL.md template (CodeWhale loads skills as SKILL.md files) */
+/** CodeWhale skills/kuma/SKILL.md template */
 function codewhaleTemplate(): string {
   return [
     "---",
     "name: kuma-mcp",
-    "description: Kuma safety toolkit for AI coding agents. Use smart_grep for search, precise_diff_editor for edits, execute_safe_test for verification.",
+    "description: Kuma MCP — .kuma/ is the single source of truth",
     "---",
-    "",
-    "# Kuma MCP - CodeWhale Skill",
     "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "## CodeWhale-Specific",
-    "- CodeWhale loads SKILL.md from skills/ (workspace-local), .agents/skills/, or ~/.codewhale/skills/",
-    "- MCP config is in ~/.codewhale/mcp.json or ~/.deepseek/mcp.json",
-    "- Use kuma_guard periodically to check for anti-patterns",
-    "",
-    "## Verification",
-    "- After edits, run execute_safe_test to verify no breakage",
-    "- Use code_reviewer for correctness/security review",
-    "- Check kuma_reflect to confirm on-track",
+    "📖 Read `.kuma/init.md` for detailed rules.",
+    "🧠 Memories: `.kuma/memories/*.md`",
   ].join("\n");
 }
 
@@ -393,17 +270,13 @@ function antigravitySkillTemplate(): string {
   return [
     "---",
     "name: kuma-mcp",
-    "description: Kuma safety toolkit for AI coding agents. Use smart_grep for search, precise_diff_editor for edits, execute_safe_test for verification.",
+    "description: Kuma MCP — .kuma/ is the single source of truth",
     "---",
-    "",
-    "# Kuma MCP - Antigravity Skill",
     "",
     KUMA_CORE_INSTRUCTIONS,
     "",
-    "## Verification",
-    "- After edits, run execute_safe_test to verify no breakage",
-    "- Use code_reviewer for correctness/security review",
-    "- Check kuma_reflect to confirm on-track",
+    "📖 Read `.kuma/init.md` for detailed rules.",
+    "🧠 Memories: `.kuma/memories/*.md`",
   ].join("\n");
 }
 
@@ -419,6 +292,67 @@ function antigravityMcpConfigTemplate(): string {
     },
   };
   return JSON.stringify(config, null, 2) + "\n";
+}
+
+// ============================================================
+// .kuma/init.md — Full behavioral rules (one source of truth)
+// ============================================================
+
+/** Generate .kuma/init.md content — full rules, not thin bootstrap */
+export function generateInitMdContent(): string {
+  return [
+    "# Kuma Init — Behavioral Rules",
+    "",
+    "_(Auto-generated by \`kuma init\` — edit this file directly to customize rules)_",
+    "",
+    "## Code Search",
+    "",
+    "- Use the **smart_grep** tool to search code — NOT bash grep/ripgrep manually",
+    "- smart_grep returns line numbers + context, caches results, respects .gitignore",
+    "",
+    "## Reading Code",
+    "",
+    "- Use the **smart_file_picker** tool to read files with smart chunking",
+    "- For large files, use startLine/endLine to read specific ranges",
+    "",
+    "## Editing Code",
+    "",
+    "- Use the **precise_diff_editor** tool to edit files (fuzzy matching + auto-backup)",
+    "- DO NOT create Python/Node scripts to patch files; use precise_diff_editor directly",
+    "- DO NOT use bash sed/cat/awk to modify source files",
+    "",
+    "## Creating Files",
+    "",
+    "- Use the **batch_file_writer** tool to create new files (up to 15 at once)",
+    "- Before creating a file, ask: does this need to exist, or can it merge into an existing module?",
+    "",
+    "## Running Tasks",
+    "",
+    "- Use the **execute_safe_test** tool for test/build/lint/typecheck",
+    "- Always run typecheck after editing TypeScript files",
+    "",
+    "## Code Review",
+    "",
+    "- Use the **code_reviewer** tool after making changes",
+    "- Supports focus: correctness, security, performance, over-engineering",
+    "",
+    "## Session Awareness",
+    "",
+    "- Start each session by calling **kuma_init()** to load context",
+    "- Use **get_session_memory()** to recall what happened before",
+    "- Use **kuma_reflect** / **kuma_guard** to stay on track",
+    "- Use **write_memory()** to persist decisions and glossary terms",
+    "",
+    "## General Rules",
+    "",
+    "- When a tool errors, READ the error carefully before acting",
+    "- After 3+ edits without running tests, stop and verify",
+    "- If a tool fails, check the message — don't retry blindly",
+    "- Detect conventions first with **project_conventions()**",
+    "",
+    "---",
+    "_Generated by Kuma MCP - https://github.com/plumpslabs/kuma_",
+  ].join("\n");
 }
 
 const TEMPLATES: Record<ConfigType, () => string> = {
@@ -451,29 +385,10 @@ export interface InitResult {
   error?: string;
 }
 
-/** Generate OpenCode instructions reference (secondary entry in opencode.json) */
-function handleOpencodeSecondary(root: string, results: InitResult[]): void {
-  // OpenCode's MCP config is embedded in opencode.json (already generated),
-  // but we also add a symlink to CLAUDE.md for the instructions path
-  const claudePath = path.resolve(root, "CLAUDE.md");
-  // If CLAUDE.md doesn't exist, create a minimal one that opencode.json references
-  if (!fs.existsSync(claudePath)) {
-    try {
-      fs.writeFileSync(claudePath, [
-        "# Kuma MCP - OpenCode Instructions",
-        "",
-        KUMA_CORE_INSTRUCTIONS,
-      ].join("\n"), "utf-8");
-      results.push({ type: "opencode", filePath: "CLAUDE.md", action: "created" });
-    } catch (err) {
-      results.push({
-        type: "opencode",
-        filePath: "CLAUDE.md",
-        action: "error",
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
+/** OpenCode's opencode.json already references .kuma/init.md via instructions field. */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function handleOpencodeSecondary(_root: string, _results: InitResult[]): void {
+  // opencode.json already references .kuma/init.md — nothing additional needed
 }
 
 /** Generate Codex CLI .codex/config.toml as secondary file */
@@ -679,12 +594,12 @@ function handleCopilotSecondary(root: string, results: InitResult[]): void {
     const content = [
       "---",
       "name: kuma-mcp",
-      "description: Kuma safety toolkit for AI coding agents. Use smart_grep for search, precise_diff_editor for edits, execute_safe_test for verification.",
+      "description: Kuma MCP — .kuma/ is the single source of truth",
       "---",
       "",
-      "# Kuma MCP - Copilot Editor Skill",
-      "",
       KUMA_CORE_INSTRUCTIONS,
+      "",
+      "📖 Read `.kuma/init.md` for detailed rules.",
     ].join("\n");
 
     if (fs.existsSync(skillPath)) {
@@ -740,6 +655,36 @@ function handleOpenclawSecondary(root: string, results: InitResult[]): void {
   }
 }
 
+/** Generate .kuma/init.md — full behavioral rules, single source of truth */
+function handleInitMdGeneration(root: string, results: InitResult[]): void {
+  const initMdPath = path.resolve(root, ".kuma/init.md");
+
+  try {
+    const kumaDir = path.dirname(initMdPath);
+    if (!fs.existsSync(kumaDir)) fs.mkdirSync(kumaDir, { recursive: true });
+
+    if (fs.existsSync(initMdPath)) {
+      const existing = fs.readFileSync(initMdPath, "utf-8");
+      if (existing.includes("_Generated by Kuma MCP_")) {
+        results.push({ type: "claude", filePath: ".kuma/init.md", action: "skipped" });
+        return;
+      }
+      fs.writeFileSync(initMdPath, existing.trimEnd() + "\n\n" + generateInitMdContent(), "utf-8");
+      results.push({ type: "claude", filePath: ".kuma/init.md", action: "appended" });
+    } else {
+      fs.writeFileSync(initMdPath, generateInitMdContent(), "utf-8");
+      results.push({ type: "claude", filePath: ".kuma/init.md", action: "created" });
+    }
+  } catch (err) {
+    results.push({
+      type: "claude",
+      filePath: ".kuma/init.md",
+      action: "error",
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 /** Generate CodeWhale .codewhale/mcp.json as secondary file */
 function handleCodewhaleSecondary(root: string, results: InitResult[]): void {
   const mcpPath = path.resolve(root, ".codewhale/mcp.json");
@@ -789,6 +734,9 @@ export function runInit(options: InitOptions): InitResult[] {
   const root = options.projectRoot ?? getProjectRoot();
   const selected = options.types.length > 0 ? options.types : ALL_CONFIG_TYPES;
   const results: InitResult[] = [];
+
+  // ALWAYS generate .kuma/init.md first (single source of truth for rules)
+  handleInitMdGeneration(root, results);
 
   // Pre-compute which AGENTS.md types are selected for merge logic
   const selectedSet = new Set(selected);
@@ -936,7 +884,8 @@ export function formatInitResults(results: InitResult[]): string {
     "\u{1F4CA} Summary: " + created + " created, " + appended + " appended, "
       + skipped + " skipped, " + errors + " errors",
     "",
-    "\u{1F4A1} Config files teach your AI how to use Kuma tools.",
+    "\u{1F4A1} Rules are in `.kuma/init.md` — single source of truth for all tools.",
+    "\u{1F4A1} Call `kuma_init()` at session start to load project context.",
     "\u{1F4A1} Run again to generate additional config files anytime.",
   );
 

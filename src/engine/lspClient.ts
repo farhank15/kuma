@@ -190,8 +190,10 @@ class LSPClient {
       // ignore PATH resolution errors
     }
 
-    // Not found — return null so caller can use regex fallback
-    return null;
+    // Try npx fallback — auto-install typescript-language-server
+    // Most projects don't have it as a direct dependency but npx can fetch it
+    console.error(`[LSP] typescript-language-server not found locally. Trying npx fallback.`);
+    return "npx --yes typescript-language-server";
   }
 
   private toUri(filePath: string): string {

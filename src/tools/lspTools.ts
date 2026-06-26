@@ -37,23 +37,29 @@ export async function handleFindReferences(params: LSPFindParams): Promise<strin
   const resolvedPath = validation.resolvedPath;
   if (!fs.existsSync(resolvedPath)) {
     return `Error: File not found: "${filePath}".`;
-  }    // LSP fallback to regex grep
-    if (!lspClient.isAvailable()) {
-      sessionMemory.recordToolCall("lsp_query", { action: "refs", filePath, line, character, fallback: "regex" });
-      const symbolName = extractSymbolAtPosition(resolvedPath, line, character);
-      if (!symbolName) {
-        return `⚠️ LSP unavailable and cannot read symbol at that position for fallback grep.
+  }
 
-💡 Install typescript-language-server: npm install typescript-language-server --save-dev`;
-      }
-      return fallbackGrepReferences(symbolName, resolvedPath, line, character);
+  // LSP unavailable — use regex fallback
+  if (!lspClient.isAvailable()) {
+    sessionMemory.recordToolCall("lsp_query", { action: "refs", filePath, line, character, fallback: "regex" });
+    console.error(`[LSP] typescript-language-server not found. Using regex fallback for find_references.`);
+    const symbolName = extractSymbolAtPosition(resolvedPath, line, character);
+    if (!symbolName) {
+      return `**Find References** — "${filePath}:${line + 1}:${character + 1}"
+Could not read symbol at this position.
+
+Try selecting a smaller/cleaner position, or install typescript-language-server for better results:
+  npm install typescript-language-server --save-dev`;
     }
+    return fallbackGrepReferences(symbolName, resolvedPath, line, character);
+  }
 
   try {
     const references = await lspClient.findReferences(resolvedPath, line, character);
 
     if (references.length === 0) {
-      return `🔍 **Find References** — "${filePath}:${line + 1}:${character + 1}"\n⚠️ No references found for symbol at this position.`;
+      return `**Find References** — "${filePath}:${line + 1}:${character + 1}"
+No references found for symbol at this position.`;
     }
 
     // Read line content for each reference
@@ -79,7 +85,7 @@ export async function handleFindReferences(params: LSPFindParams): Promise<strin
 
     const projectRoot = getProjectRoot();
     const lines: string[] = [
-      `🔍 **Find References** — ${enrichedRefs.length} references found`,
+      `**Find References** — ${enrichedRefs.length} references found`,
       `📍 File: ${path.relative(projectRoot, resolvedPath)}:${line + 1}:${character + 1}`,
       "",
     ];
@@ -97,7 +103,7 @@ export async function handleFindReferences(params: LSPFindParams): Promise<strin
     lines.push("💡 Use smart_file_picker to read specific files.");
     return lines.join("\n");
   } catch (err) {
-    return `Error finding references: ${err instanceof Error ? err.message : String(err)}`;
+    return `**Find References** — error during lookup: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
@@ -118,14 +124,17 @@ export async function handleGoToDefinition(params: LSPFindParams): Promise<strin
     return `Error: File not found: "${filePath}".`;
   }
 
-  // LSP fallback to regex
+  // LSP unavailable — use regex fallback
   if (!lspClient.isAvailable()) {
     sessionMemory.recordToolCall("lsp_query", { action: "def", filePath, line, character, fallback: "regex" });
+    console.error(`[LSP] typescript-language-server not found. Using regex fallback for go_to_definition.`);
     const symbolName = extractSymbolAtPosition(resolvedPath, line, character);
     if (!symbolName) {
-      return `⚠️ LSP unavailable and cannot read symbol at that position for fallback.
+      return `**Go to Definition** — "${filePath}:${line + 1}:${character + 1}"
+Could not read symbol at this position.
 
-💡 Install typescript-language-server: npm install typescript-language-server --save-dev`;
+Try selecting a smaller/cleaner position, or install typescript-language-server for better results:
+  npm install typescript-language-server --save-dev`;
     }
     return fallbackGrepDefinition(symbolName);
   }
@@ -134,7 +143,8 @@ export async function handleGoToDefinition(params: LSPFindParams): Promise<strin
     const definition = await lspClient.goToDefinition(resolvedPath, line, character);
 
     if (!definition) {
-      return `🔍 **Go to Definition** — "${filePath}:${line + 1}:${character + 1}"\n⚠️ Cannot find definition for symbol at this position.`;
+      return `**Go to Definition** — "${filePath}:${line + 1}:${character + 1}"
+Cannot find definition for symbol at this position.`;
     }
 
     const projectRoot = getProjectRoot();
@@ -165,7 +175,7 @@ export async function handleGoToDefinition(params: LSPFindParams): Promise<strin
 
     return lines.join("\n");
   } catch (err) {
-    return `Error finding definition: ${err instanceof Error ? err.message : String(err)}`;
+    return `**Go to Definition** — error during lookup: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
 
@@ -190,14 +200,16 @@ export async function handleRenameSymbol(params: LSPRenameParams): Promise<strin
     return `Error: File not found: "${filePath}".`;
   }
 
-  // LSP fallback: rename requires LSP server for accurate refactoring
+  // LSP unavailable — rename requires LSP for accurate refactoring
   if (!lspClient.isAvailable()) {
     sessionMemory.recordToolCall("lsp_query", { action: "rename", filePath, line, character, newName, fallback: "none" });
-    return `⚠️ **Rename Symbol** unavailable without LSP server.
-Rename requires typescript-language-server to track references across all files.
-💡 Install: npm install typescript-language-server --save-dev
+    console.error(`[LSP] typescript-language-server not found. Rename requires LSP server.`);
+    return `**Rename Symbol** — cannot rename without language server.
+Rename needs typescript-language-server to track references across all files.
 
-Meanwhile, use smart_grep to find all references, then precise_diff_editor for manual editing.`;
+Install: npm install typescript-language-server --save-dev
+
+Meanwhile, use smart_grep to find all references, then precise_diff_editor to rename manually.`;
   }
 
   try {
@@ -213,7 +225,7 @@ Make sure:
     }
 
     if (result.changes.length === 0) {
-      return "⚠️ No changes needed.";
+      return "No changes needed.";
     }
 
     // Apply the changes to files
@@ -284,15 +296,16 @@ export async function handleGetTypeInfo(params: LSPFindParams): Promise<string> 
     return `Error: File not found: "${filePath}".`;
   }
 
-  // LSP fallback: read the file and show line content
+  // LSP unavailable — read file and show line context
   if (!lspClient.isAvailable()) {
     sessionMemory.recordToolCall("lsp_query", { action: "type", filePath, line, character, fallback: "line-context" });
+    console.error(`[LSP] typescript-language-server not found. Using file-read fallback for type info.`);
     try {
       const fileContent = fs.readFileSync(resolvedPath, "utf-8");
       const fileLines = fileContent.split("\n");
       const targetLine = fileLines[line];
       if (!targetLine) {
-        return `⚠️ **Type Info** — Line ${line + 1} does not exist in "${filePath}".`;
+        return `**Type Info** — Line ${line + 1} does not exist in "${filePath}".`;
       }
       const symbolName = extractSymbolAtPosition(resolvedPath, line, character);
       const projectRoot = getProjectRoot();
@@ -312,23 +325,20 @@ export async function handleGetTypeInfo(params: LSPFindParams): Promise<string> 
       }
 
       const resultLines: string[] = [
-        `📋 **Type Info** (fallback — LSP unavailable)`,
-        `📄 \`${relPath}:${line + 1}:${character + 1}\``,
-        symbolName ? `🔤 **Symbol:** \`${symbolName}\`` : `⚠️ Could not extract symbol at this position.`,
+        `📋 **Type Info** — \`${relPath}:${line + 1}:${character + 1}\``,
+        symbolName ? `🔤 **Symbol:** \`${symbolName}\`` : `Could not extract symbol at this position.`,
         "",
         "📎 Context:",
         "```",
         ...contextLines,
         "```",
         "",
-        `⚠️ Full type info requires typescript-language-server.`,
-        `💡 Install: npm install typescript-language-server --save-dev`,
-        `💡 Use smart_grep or smart_file_picker to read the file for more context.`,
+        "Use smart_grep or smart_file_picker to read more context.",
       ];
 
       return resultLines.join("\n");
     } catch (err) {
-      return `⚠️ **Type Info** unavailable without LSP server, and could not read file for fallback: ${err instanceof Error ? err.message : String(err)}`;
+      return `**Type Info** — could not read file for context: ${err instanceof Error ? err.message : String(err)}`;
     }
   }
 
@@ -336,8 +346,8 @@ export async function handleGetTypeInfo(params: LSPFindParams): Promise<string> 
     const hoverInfo = await lspClient.getTypeInfo(resolvedPath, line, character);
 
     if (!hoverInfo || !hoverInfo.contents) {
-      return `📋 **Type Info** — "${filePath}:${line + 1}:${character + 1}"
-⚠️ No type info for this position.`;
+      return `**Type Info** — "${filePath}:${line + 1}:${character + 1}"
+No type info for this position.`;
     }
 
     const projectRoot = getProjectRoot();
@@ -394,7 +404,7 @@ export async function handleLspQuery(params: LSPQueryParams): Promise<string> {
 }
 
 // ============================================================
-// LSP FALLBACK: Regex-based helpers saat LSP server unavailable
+// LSP FALLBACK: Regex-based helpers when LSP server is unavailable
 // ============================================================
 
 /** Read symbol name at position using simple regex */
@@ -451,8 +461,8 @@ async function fallbackGrepReferences(symbolName: string, _filePath: string, _li
     }
 
     if (results.length === 0) {
-      return `🔍 **Find References** (regex fallback) — "${symbolName}"
-⚠️ No references found. Symbol may not be used in other files.`;
+      return `**Find References** — "${symbolName}"
+No references found. Symbol may not be used in other files.`;
     }
 
     const grouped = new Map<string, typeof results>();
@@ -464,19 +474,16 @@ async function fallbackGrepReferences(symbolName: string, _filePath: string, _li
 
     const projectRoot = getProjectRoot();
     const lines: string[] = [
-      `🔍 **Find References** (regex fallback) — ${results.length} references found`,
+      `**Find References** — ${results.length} references found`,
       `📍 Symbol: "${symbolName}"`,
-      `⚠️ Regex results may be less accurate than LSP (includes comments/strings).`,
       "",
     ];
 
     // Warn about ambiguity when matches span multiple files or appear in different scopes
     if (grouped.size > 1) {
       const fileList = [...grouped.keys()].map(f => path.relative(projectRoot, f)).join(", ");
-      lines.push(`⚠️ **Ambiguity warning:** Found matches across ${grouped.size} different files (${fileList}).`);
-      lines.push(`   Regex fallback cannot distinguish between different scopes with the same symbol name.`);
-      lines.push(`   If you intended only one scope, clarify which file or location you mean.`);
-      lines.push(`   💡 Install typescript-language-server for scope-aware disambiguation.`);
+      lines.push(`**Ambiguity note:** Found matches across ${grouped.size} different files (${fileList}).`);
+      lines.push(`   Verify each match is the right scope — results may include same-named symbols.`);
       lines.push("");
     } else if (results.length > 1) {
       // Single file, multiple matches — could still be different scopes (different functions)
@@ -487,9 +494,8 @@ async function fallbackGrepReferences(symbolName: string, _filePath: string, _li
       const minLine = Math.min(...matchLines);
       const maxLine = Math.max(...matchLines);
       if (maxLine - minLine > 15) {
-        lines.push(`⚠️ **Ambiguity warning:** Found ${results.length} matches for "${symbolName}" spanning lines ${minLine}-${maxLine} in the same file.`);
-        lines.push(`   They may be in different function scopes — regex cannot distinguish them.`);
-        lines.push(`   💡 Verify each match is the intended symbol before editing.`);
+        lines.push(`**Ambiguity note:** Found ${results.length} matches for "${symbolName}" spanning lines ${minLine}-${maxLine} in the same file.`);
+        lines.push(`   Verify each match is the intended symbol.`);
         lines.push("");
       }
     }
@@ -503,7 +509,7 @@ async function fallbackGrepReferences(symbolName: string, _filePath: string, _li
       lines.push("");
     }
 
-    lines.push("💡 Install typescript-language-server for more accurate results.");
+    console.error(`[LSP] Regex fallback: found ${results.length} references for "${symbolName}".`);
     return lines.join("\n");
   } catch (err) {
     return `Error in fallback grep references: ${err instanceof Error ? err.message : String(err)}`;
@@ -543,12 +549,10 @@ async function fallbackGrepDefinition(symbolName: string): Promise<string> {
               const projectRoot = getProjectRoot();
               const relPath = path.relative(projectRoot, file);
               return [
-                `📍 **Go to Definition** (regex fallback)`,
+                `📍 **Go to Definition**`,
                 `📄 File: \`${relPath}\``,
                 `📏 Line: ${i + 1}`,
                 `└ ${trimmed.substring(0, 120)}`,
-                "",
-                `💡 Install typescript-language-server for more accurate results.`,
               ].join("\n");
             }
           }
@@ -557,12 +561,10 @@ async function fallbackGrepDefinition(symbolName: string): Promise<string> {
         continue;
       }
     }
-
-     return `📍 **Go to Definition** (regex fallback) — "${symbolName}"
-⚠️ Cannot find definition.
-💡 Install typescript-language-server for more accurate results.`;
+    console.error(`[LSP] Regex fallback: no definition found for "${symbolName}".`);
+    return `**Go to Definition** — "${symbolName}"
+Cannot find definition.`;
   } catch (err) {
     return `Error in fallback grep definition: ${err instanceof Error ? err.message : String(err)}`;
   }
 }
-

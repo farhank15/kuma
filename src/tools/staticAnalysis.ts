@@ -67,7 +67,28 @@ export async function handleStaticAnalysis(params: StaticAnalysisParams): Promis
   for (const t of toolsToRun) {
     const output = await runTool(t, root, files, autoFix, timeout);
     if (output === null) {
-      results.push({ tool: t, exitCode: -1, issues: [], summary: { errors: 0, warnings: 0, info: 0 } });
+      const cmd = buildToolCommand(t, files, autoFix);
+      const reason = cmd === null
+        ? `Could not build command for tool "${t}" (unknown tool type)`
+        : `Command "${cmd}" returned no output (tool may not be installed)`;
+      console.error(`[StaticAnalysis] ${reason}`);
+      allIssues.push({
+        file: `(${t} error)`,
+        line: 0,
+        column: 0,
+        severity: "error",
+        message: reason,
+        rule: t,
+        source: t,
+      });
+      const result: AnalysisResult = {
+        tool: t,
+        exitCode: -1,
+        issues: [{ file: `(${t} error)`, line: 0, column: 0, severity: "error", message: reason, rule: t, source: t }],
+        summary: { errors: 1, warnings: 0, info: 0 },
+      };
+      results.push(result);
+      sessionMemory.addFailedFile("static_analysis:" + t, reason);
       continue;
     }
 
@@ -84,6 +105,24 @@ export async function handleStaticAnalysis(params: StaticAnalysisParams): Promis
     };
     results.push(result);
     allIssues.push(...issues);
+
+    // Surface stderr for tools that exited non-zero with no parseable issues
+    if (result.exitCode !== 0 && issues.length === 0 && output.stderr.trim()) {
+      const stderrLines = output.stderr.trim().split("\n").slice(0, 8);
+      console.error(`[StaticAnalysis] ${t} exited with code ${result.exitCode} (no parseable output):`);
+      for (const errLine of stderrLines) {
+        console.error(`[StaticAnalysis]   ${errLine}`);
+      }
+      allIssues.push({
+        file: `(${t} error)`,
+        line: 0,
+        column: 0,
+        severity: "error",
+        message: `Tool "${t}" exited with code ${result.exitCode}. Check stderr for details.`,
+        rule: t,
+        source: t,
+      });
+    }
 
     if (result.summary.errors > 0 || result.summary.warnings > 0) {
       const errorMsg = result.summary.errors > 0
@@ -193,11 +232,18 @@ async function runTool(
 
 function buildToolCommand(tool: AvailableTool, files?: string[], autoFix?: boolean): string | null {
   const pm = detectPackageManagerPrefix();
+  const root = getProjectRoot();
 
   switch (tool) {
     case "eslint": {
       const fixFlag = autoFix ? " --fix" : "";
       const target = files ? files.join(" ") : ".";
+      // Check if eslint is actually installed before using --no-install
+      const eslintBin = findBinary(root, "eslint");
+      if (!eslintBin) {
+        console.error(`[StaticAnalysis] eslint not found locally. Trying npx (auto-install).`);
+        return "npx eslint" + fixFlag + " " + target + " --format unix";
+      }
       return pm + "eslint" + fixFlag + " " + target + " --format unix";
     }
     case "tsc": {
@@ -206,6 +252,12 @@ function buildToolCommand(tool: AvailableTool, files?: string[], autoFix?: boole
     case "prettier": {
       const fixFlag = autoFix ? " --write" : " --check";
       const target = files ? files.join(" ") : ".";
+      // Check if prettier is actually installed before using --no-install
+      const prettierBin = findBinary(root, "prettier");
+      if (!prettierBin) {
+        console.error(`[StaticAnalysis] prettier not found locally. Trying npx (auto-install).`);
+        return "npx prettier" + fixFlag + " " + target;
+      }
       return pm + "prettier" + fixFlag + " " + target;
     }
     case "ruff": {
@@ -223,6 +275,24 @@ function detectPackageManagerPrefix(): string {
   if (fs.existsSync(path.join(root, "pnpm-lock.yaml"))) return "pnpm ";
   if (fs.existsSync(path.join(root, "yarn.lock"))) return "yarn ";
   return "npx --no-install "; // npm or bun — prevent accidental install prompts
+}
+
+/** Check if a binary exists in node_modules/.bin for the project */
+function findBinary(root: string, binName: string): string | null {
+  const candidates = [
+    path.join(root, "node_modules", ".bin", binName),
+    path.join(root, "..", "node_modules", ".bin", binName),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return null;
 }
 
 // ============================================================
@@ -413,16 +483,17 @@ function formatResults(
     "",
     "Summary: " + totalErrors + " error(s), " + totalWarnings + " warning(s), " + totalInfo + " info",
     "",
-  ];
-
-  if (!hasIssues) {
+  ];    if (!hasIssues) {
     // Check if any tools failed to run (exit code non-zero but no issues parsed)
     const failedTools = results.filter(r => r.exitCode !== 0);
     if (failedTools.length > 0) {
-      lines.push("Tool(s) executed but reported no parseable issues.");
-      lines.push("Failed tools: " + failedTools.map(t => t.tool + " (exit: " + t.exitCode + ")").join(", "));
+      lines.push("Tool(s) executed but failed:");
+      for (const ft of failedTools) {
+        lines.push(`  - ${ft.tool} (exit code: ${ft.exitCode})`);
+      }
       lines.push("");
-      lines.push("The tool may have encountered an error. Run it manually to see full output.");
+      lines.push("The tools may not be installed correctly or encountered an error.");
+      lines.push("Run the tool manually to see the full output.");
     } else {
       lines.push("All checks passed — no issues found.");
     }
@@ -480,13 +551,13 @@ function formatNoToolsDetected(): string {
     "No linters or checkers detected for this project.",
     "",
     "Detected tools include:",
-    "  - ESLint (check .eslintrc or eslint.config.*)",
-    "  - TypeScript (check tsconfig.json)",
-    "  - Prettier (check .prettierrc)",
-    "  - Ruff (check ruff.toml)",
+    "  - ESLint  — check .eslintrc or eslint.config.*",
+    "  - tsc     — check tsconfig.json",
+    "  - Prettier — check .prettierrc",
+    "  - Ruff    — check ruff.toml",
     "",
-    "Install and configure a linter to use this tool.",
-    "Then run project_conventions to refresh detection.",
+    "Each needs both a config file AND the npm package installed.",
+    "Install a linter, then run project_conventions to refresh.",
   ].join("\n");
 }
 

@@ -390,6 +390,81 @@ export class SessionMemory {
   // ============================================================
 
   /**
+   * Load previous session data into current session.
+   * Called by kuma_init() to hydrate conventions, failures, and modified files
+   * from a prior session stored in memory.json.
+   */
+  loadSession(): { hasPrevSession: boolean; toolCallCount: number; hasConventions: boolean } {
+    this.ensureInit();
+    const kumaDir = path.join(this.state.projectRoot, ".kuma");
+    const sessionFile = path.join(kumaDir, "memory.json");
+
+    if (!fs.existsSync(sessionFile)) {
+      return { hasPrevSession: false, toolCallCount: 0, hasConventions: !!this.state.conventions };
+    }
+
+    try {
+      const raw = fs.readFileSync(sessionFile, "utf-8");
+      const parsed = JSON.parse(raw);
+
+      // Restore conventions if current session doesn't have them
+      if (!this.state.conventions && parsed.conventions) {
+        this.state.conventions = parsed.conventions;
+      }
+
+      // Restore unresolved failures
+      const prevFailed = parsed.failedFiles as Array<[string, Array<{ task: string; error: string; timestamp: number; resolved: boolean }>]> | undefined;
+      if (prevFailed) {
+        for (const [task, failures] of prevFailed) {
+          for (const f of failures) {
+            if (!f.resolved) {
+              const existing = this.state.failedFiles.get(task);
+              if (!existing?.some(ef => ef.error === f.error)) {
+                this.state.failedFiles.set(task, [...(existing || []), f]);
+              }
+            }
+          }
+        }
+      }
+
+      // Restore modified files (for context, not for re-applying)
+      const prevModified = parsed.modifiedFiles as Array<[string, { filePath: string; modifiedAt: number; status: string }]> | undefined;
+      if (prevModified) {
+        for (const [filePath, mod] of prevModified) {
+          if (!this.state.modifiedFiles.has(filePath)) {
+            this.state.modifiedFiles.set(filePath, {
+              filePath,
+              modifiedAt: mod.modifiedAt,
+              status: mod.status as "modified" | "created" | "failed",
+            });
+          }
+        }
+      }
+
+      // Restore search results for context
+      const prevSearch = parsed.searchResults as Array<[string, string[]]> | undefined;
+      if (prevSearch) {
+        for (const [query, files] of prevSearch) {
+          if (!this.state.searchResults.has(query)) {
+            this.state.searchResults.set(query, files);
+          }
+        }
+      }
+
+      const toolCallCount = (parsed.toolCalls as Array<unknown>)?.length ?? 0;
+
+      this.save();
+      return {
+        hasPrevSession: true,
+        toolCallCount,
+        hasConventions: !!this.state.conventions,
+      };
+    } catch {
+      return { hasPrevSession: false, toolCallCount: 0, hasConventions: !!this.state.conventions };
+    }
+  }
+
+  /**
    * Search through tool call history, memory files, search results,
    * errors, and file modifications for a keyword.
    */

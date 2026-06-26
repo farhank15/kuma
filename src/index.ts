@@ -6,7 +6,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerAllTools } from "./manifest.js";
 import { sessionMemory } from "./engine/sessionMemory.js";
-import { runInit, formatInitResults, ALL_CONFIG_TYPES, type ConfigType } from "./cli/init.js";
+import {
+  runInit,
+  formatInitResults,
+  ALL_CONFIG_TYPES,
+  type ConfigType,
+} from "./cli/init.js";
 
 // ============================================================
 // KUMA — CLI Entry Point
@@ -108,16 +113,21 @@ async function main(): Promise<void> {
           }
         }
         if (selectedTypes.length === 0) {
-          console.error("⚠️ No valid flags provided. Use --help to see options.");
+          console.error(
+            "⚠️ No valid flags provided. Use --help to see options.",
+          );
           process.exit(1);
         }
       }
     }
 
     const skipExisting = requestedFlags.includes("--skip-existing");
-    const merge = requestedFlags.includes("--merge"); // Default behavior anyway
 
-    const results = runInit({ types: selectedTypes, projectRoot: process.cwd(), skipExisting });
+    const results = runInit({
+      types: selectedTypes,
+      projectRoot: process.cwd(),
+      skipExisting,
+    });
     const output = formatInitResults(results);
 
     // Print to stdout (for piping) and stderr (for human reading)
@@ -127,9 +137,18 @@ async function main(): Promise<void> {
     const fs = await import("node:fs");
     const path = await import("node:path");
     const matchaSkills = path.resolve(process.cwd(), "skills/matcha/SKILL.md");
-    const matchaAgents = path.resolve(process.cwd(), ".agents/skills/matcha/SKILL.md");
-    const matchaCursor = path.resolve(process.cwd(), ".cursor/rules/matcha.mdc");
-    const matchaWindsurf = path.resolve(process.cwd(), ".windsurf/rules/matcha.md");
+    const matchaAgents = path.resolve(
+      process.cwd(),
+      ".agents/skills/matcha/SKILL.md",
+    );
+    const matchaCursor = path.resolve(
+      process.cwd(),
+      ".cursor/rules/matcha.mdc",
+    );
+    const matchaWindsurf = path.resolve(
+      process.cwd(),
+      ".windsurf/rules/matcha.md",
+    );
 
     if (
       fs.existsSync(matchaSkills) ||
@@ -137,7 +156,9 @@ async function main(): Promise<void> {
       fs.existsSync(matchaCursor) ||
       fs.existsSync(matchaWindsurf)
     ) {
-      console.error("\n\u{1F375} Hey, I see matcha is installed \u2014 they pair well together!");
+      console.error(
+        "\n\u{1F375} Hey, I see matcha is installed \u2014 they pair well together!",
+      );
     }
 
     process.exit(0);
@@ -151,6 +172,24 @@ async function main(): Promise<void> {
     projectRoot: process.cwd(),
     startTime: Date.now(),
   });
+
+  // Auto-generate .kuma/init.md (behavioral rules) if missing
+  (async () => {
+    try {
+      const { generateInitMdContent } = await import("./cli/init.js");
+      const fs = await import("node:fs");
+      const path = await import("node:path");
+      const initMdPath = path.resolve(process.cwd(), ".kuma/init.md");
+      if (!fs.existsSync(initMdPath)) {
+        const kumaDir = path.dirname(initMdPath);
+        if (!fs.existsSync(kumaDir)) fs.mkdirSync(kumaDir, { recursive: true });
+        fs.writeFileSync(initMdPath, generateInitMdContent(), "utf-8");
+        console.error(`[${SERVER_NAME}] Auto-generated .kuma/init.md`);
+      }
+    } catch (err) {
+      console.error(`[${SERVER_NAME}] Failed to auto-generate .kuma/init.md: ${err}`);
+    }
+  })();
 
   const server = new McpServer(
     {
@@ -173,6 +212,12 @@ async function main(): Promise<void> {
   console.error(
     `[${SERVER_NAME}] Session started: ${new Date().toISOString()}`,
   );
+  console.error(
+    `[${SERVER_NAME}] Kuma Core v3 — .kuma/init.md is the single source of truth`,
+  );
+  console.error(
+    `[${SERVER_NAME}] 🧠 Call kuma_init() at session start to load project context`,
+  );
 
   await server.connect(transport);
 
@@ -188,18 +233,42 @@ async function main(): Promise<void> {
 function interactiveSelect(): Promise<ConfigType[]> {
   const labels = [
     { type: "claude" as ConfigType, label: "1) Claude Code (CLAUDE.md)" },
-    { type: "cursor" as ConfigType, label: "2) Cursor (.cursor/rules/kuma.mdc)" },
+    {
+      type: "cursor" as ConfigType,
+      label: "2) Cursor (.cursor/rules/kuma.mdc)",
+    },
     { type: "windsurf" as ConfigType, label: "3) Windsurf (.windsurfrules)" },
-    { type: "copilot" as ConfigType, label: "4) GitHub Copilot Editor (AGENTS.md + Skill)" },
+    {
+      type: "copilot" as ConfigType,
+      label: "4) GitHub Copilot Editor (AGENTS.md + Skill)",
+    },
     { type: "cline" as ConfigType, label: "5) Cline (.clinerules/kuma.md)" },
-    { type: "aider" as ConfigType, label: "6) Aider (CONVENTIONS.md via .aider.conf.yml)" },
-    { type: "antigravity" as ConfigType, label: "7) Antigravity CLI (.agents/skills/)" },
+    {
+      type: "aider" as ConfigType,
+      label: "6) Aider (CONVENTIONS.md via .aider.conf.yml)",
+    },
+    {
+      type: "antigravity" as ConfigType,
+      label: "7) Antigravity CLI (.agents/skills/)",
+    },
     { type: "opencode" as ConfigType, label: "8) OpenCode (opencode.json)" },
-    { type: "codex" as ConfigType, label: "9) Codex CLI - OpenAI (AGENTS.md + .codex/config.toml)" },
-    { type: "qwen" as ConfigType, label: "10) Qwen Code (AGENTS.md + settings.json)" },
+    {
+      type: "codex" as ConfigType,
+      label: "9) Codex CLI - OpenAI (AGENTS.md + .codex/config.toml)",
+    },
+    {
+      type: "qwen" as ConfigType,
+      label: "10) Qwen Code (AGENTS.md + settings.json)",
+    },
     { type: "kiro" as ConfigType, label: "11) Kiro (.kiro/steering/kuma.md)" },
-    { type: "openclaw" as ConfigType, label: "12) OpenClaw (skills/kuma/SKILL.md)" },
-    { type: "codewhale" as ConfigType, label: "13) CodeWhale (skills/kuma/SKILL.md + .codewhale/mcp.json)" },
+    {
+      type: "openclaw" as ConfigType,
+      label: "12) OpenClaw (skills/kuma/SKILL.md)",
+    },
+    {
+      type: "codewhale" as ConfigType,
+      label: "13) CodeWhale (skills/kuma/SKILL.md + .codewhale/mcp.json)",
+    },
   ];
 
   const rl = readline.createInterface({
@@ -214,41 +283,47 @@ function interactiveSelect(): Promise<ConfigType[]> {
     }
     console.error("");
 
-    rl.question("Enter numbers separated by space (e.g. '1 3 5'), or 'all': ", (answer) => {
-      rl.close();
-      const input = answer.trim().toLowerCase();
+    rl.question(
+      "Enter numbers separated by space (e.g. '1 3 5'), or 'all': ",
+      (answer) => {
+        rl.close();
+        const input = answer.trim().toLowerCase();
 
-      if (input === "all") {
-        resolve(ALL_CONFIG_TYPES);
-        return;
-      }
-
-      const nums = input.split(/\s+/).map(Number).filter((n) => n >= 1 && n <= 13);
-      const typeMap: Record<number, ConfigType> = {
-        1: "claude",
-        2: "cursor",
-        3: "windsurf",
-        4: "copilot",
-        5: "cline",
-        6: "aider",
-        7: "antigravity",
-        8: "opencode",
-        9: "codex",
-        10: "qwen",
-        11: "kiro",
-        12: "openclaw",
-        13: "codewhale",
-      };
-
-      const selected: ConfigType[] = [];
-      for (const n of nums) {
-        const t = typeMap[n];
-        if (t && !selected.includes(t)) {
-          selected.push(t);
+        if (input === "all") {
+          resolve(ALL_CONFIG_TYPES);
+          return;
         }
-      }
-      resolve(selected);
-    });
+
+        const nums = input
+          .split(/\s+/)
+          .map(Number)
+          .filter((n) => n >= 1 && n <= 13);
+        const typeMap: Record<number, ConfigType> = {
+          1: "claude",
+          2: "cursor",
+          3: "windsurf",
+          4: "copilot",
+          5: "cline",
+          6: "aider",
+          7: "antigravity",
+          8: "opencode",
+          9: "codex",
+          10: "qwen",
+          11: "kiro",
+          12: "openclaw",
+          13: "codewhale",
+        };
+
+        const selected: ConfigType[] = [];
+        for (const n of nums) {
+          const t = typeMap[n];
+          if (t && !selected.includes(t)) {
+            selected.push(t);
+          }
+        }
+        resolve(selected);
+      },
+    );
   });
 }
 

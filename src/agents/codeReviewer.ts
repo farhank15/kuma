@@ -30,6 +30,11 @@ interface ReviewIssue {
 const CODE_EXTENSIONS = [
   ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
   ".py", ".go", ".rs", ".php", ".cs", ".java",
+  ".json", ".jsonc", ".yaml", ".yml", ".toml",
+];
+
+const CONFIG_EXTENSIONS = [
+  ".json", ".jsonc", ".yaml", ".yml", ".toml",
 ];
 
 function getGitChangedFiles(): string[] {
@@ -222,6 +227,7 @@ function isTsLike(filePath: string): boolean {
 
 function checkGeneral(filePath: string, content: string, issues: ReviewIssue[]): void {
   const lines = content.split("\n");
+  const ext = path.extname(filePath).toLowerCase();
 
   // File ends with newline
   if (content.length > 0 && !content.endsWith("\n")) {
@@ -245,6 +251,11 @@ function checkGeneral(filePath: string, content: string, issues: ReviewIssue[]):
       message: `File is ${lines.length} lines — consider splitting`,
       suggestion: "Extract cohesive sections into separate modules",
     });
+  }
+
+  // Config file checks (JSON / YAML / TOML)
+  if (CONFIG_EXTENSIONS.includes(ext)) {
+    checkConfigFile(filePath, content, issues);
   }
 }
 
@@ -447,6 +458,357 @@ function checkCorrectness(filePath: string, content: string, issues: ReviewIssue
       message: `Code nests ${maxDepth} levels deep`,
       suggestion: "Extract helper functions or use early returns",
     });
+  }
+}
+
+/** Strip JS-style comments from JSON content (for .jsonc support) */
+function stripJsonComments(text: string): string {
+  // Strip block comments /* ... */
+  let result = text.replace(/\/\*[\s\S]*?\*\//g, "");
+  // Strip line comments // ...
+  const lines = result.split("\n");
+  const cleaned = lines.map(line => {
+    const commentIdx = line.indexOf("//");
+    if (commentIdx === -1) return line;
+    // Count quotes before // — if odd, the // is inside a string
+    const before = line.substring(0, commentIdx);
+    const quoteCount = (before.match(/"/g) || []).length;
+    if (quoteCount % 2 === 0) {
+      return before;
+    }
+    return line;
+  });
+  return cleaned.join("\n");
+}
+
+// ============================================================
+// CONFIG FILE CHECKS (JSON / YAML / TOML)
+// ============================================================
+
+function checkConfigFile(filePath: string, content: string, issues: ReviewIssue[]): void {
+  const ext = path.extname(filePath).toLowerCase();
+  const lines = content.split("\n");
+
+  if (ext === ".json" || ext === ".jsonc") {
+    checkJson(filePath, content, lines, issues);
+  } else if (ext === ".yaml" || ext === ".yml") {
+    checkYaml(filePath, content, lines, issues);
+  } else if (ext === ".toml") {
+    checkToml(filePath, content, lines, issues);
+  }
+}
+
+/** JSON-specific checks: parse validation, trailing commas, duplicate keys, quote style */
+function checkJson(filePath: string, content: string, lines: string[], issues: ReviewIssue[]): void {
+  const ext = path.extname(filePath).toLowerCase();
+  const isJsonc = ext === ".jsonc";
+
+  // 1. Try JSON.parse — strip comments first for .jsonc files
+  const contentToParse = isJsonc ? stripJsonComments(content) : content;
+  try {
+    JSON.parse(contentToParse);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // If .jsonc file has comments and JSON.parse failed, check if comments are the cause
+    if (isJsonc && /\/\/|\/\*/.test(content)) {
+      issues.push({
+        file: filePath,
+        line: 1,
+        severity: "info",
+        rule: "jsonc/comments-stripped",
+        message: "JSON with Comments — comments were stripped for validation. Check the remaining syntax.",
+        suggestion: "If issues remain, check quotes, commas, braces after comment removal",
+      });
+      return;  // Don't report generic parse error for .jsonc — comments cause noise
+    }
+
+    // Try to extract line number from parse error
+    const posMatch = msg.match(/position\s+(\d+)/i);
+    const lineMatch = msg.match(/line\s+(\d+)/i);
+    let errorLine = 1;
+    if (lineMatch) {
+      errorLine = parseInt(lineMatch[1], 10);
+    } else if (posMatch) {
+      const pos = parseInt(posMatch[1], 10);
+      let charCount = 0;
+      for (let i = 0; i < lines.length; i++) {
+        charCount += lines[i].length + 1;
+        if (charCount >= pos) {
+          errorLine = i + 1;
+          break;
+        }
+      }
+    }
+    issues.push({
+      file: filePath,
+      line: errorLine,
+      severity: "error",
+      rule: "json/parse-error",
+      message: `Invalid JSON: ${msg.substring(0, 120)}`,
+      suggestion: "Fix the syntax error — check quotes, commas, braces, and brackets",
+    });
+  }
+
+  // 2. Check for trailing commas (common mistake)
+  // Look for any line ending with comma where the next non-empty line closes the structure
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (!/,\s*$/.test(trimmed)) continue;
+
+    // Check if next non-empty line closes the structure
+    let nextNonEmpty = "";
+    for (let j = i + 1; j < lines.length; j++) {
+      const t = lines[j].trim();
+      if (t && !t.startsWith("//") && !t.startsWith("*") && !t.startsWith("#")) {
+        nextNonEmpty = t;
+        break;
+      }
+    }
+    if (nextNonEmpty === "]" || nextNonEmpty === "}" || nextNonEmpty === "]," || nextNonEmpty === "},") {
+      issues.push({
+        file: filePath,
+        line: i + 1,
+        severity: "error",
+        rule: "json/trailing-comma",
+        message: "Trailing comma before closing bracket/brace",
+        suggestion: "Remove the trailing comma after the last element",
+      });
+    }
+  }
+
+  // 3. Check for duplicate keys (only for valid JSON)
+  try {
+    const parsed = JSON.parse(content);
+    findDuplicateKeys(parsed, "", filePath, issues, lines);
+  } catch {
+    // Already reported parse error above
+  }
+
+  // 4. Check for single quotes (invalid in strict JSON)
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Look for patterns like: 'key':  or : 'value'
+    if ((/\s+'[a-zA-Z_][a-zA-Z0-9_]*'\s*:/.test(line) || /:\s*'[^']*'\s*[,}\]$]/.test(line)) &&
+        !/\/\//.test(line)) {
+      issues.push({
+        file: filePath,
+        line: i + 1,
+        severity: "warning",
+        rule: "json/single-quote",
+        message: "Single quotes used — JSON requires double quotes",
+        suggestion: "Replace ' with \"",
+      });
+      break;  // One warning is enough
+    }
+  }
+}
+
+/** Recursively find duplicate keys in a parsed JSON object */
+function findDuplicateKeys(obj: unknown, nestedPath: string, filePath: string, issues: ReviewIssue[], lines: string[]): void {
+  if (typeof obj !== "object" || obj === null || Array.isArray(obj)) return;
+
+  const keys = Object.keys(obj as Record<string, unknown>);
+  const seen = new Map<string, number>();
+
+  for (const key of keys) {
+    if (seen.has(key)) {
+      // Find approximate line number for the duplicate
+      const searchStr = `"${key}"`;
+      let lineNum = 1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(searchStr)) {
+          lineNum = i + 1;
+          break;
+        }
+      }
+      issues.push({
+        file: filePath,
+        line: lineNum,
+        severity: "warning",
+        rule: "json/duplicate-key",
+        message: `Duplicate key "${key}" in ${nestedPath || "root"}`,
+        suggestion: "Remove or rename the duplicate — last value wins in JSON",
+      });
+    }
+    seen.set(key, 1);
+  }
+
+  // Recurse into nested objects
+  for (const key of keys) {
+    const deeperPath = nestedPath ? `${nestedPath}.${key}` : key;
+    findDuplicateKeys((obj as Record<string, unknown>)[key], deeperPath, filePath, issues, lines);
+  }
+}
+
+/** YAML-specific checks: indentation, tabs, common mistakes */
+function checkYaml(filePath: string, _content: string, lines: string[], issues: ReviewIssue[]): void {
+  let hasTabs = false;
+  let hasSpaces = false;
+  let inconsistentIndent = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const trimmed = rawLine.trim();
+
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Check for tab characters in indentation
+    if (rawLine.startsWith("\t")) hasTabs = true;
+
+    // Check for space indentation
+    const spaceMatch = rawLine.match(/^( +)/);
+    if (spaceMatch) {
+      hasSpaces = true;
+      const indent = spaceMatch[1].length;
+
+      // Check for inconsistent indentation (odd spacing, not multiple of 2)
+      if (indent % 2 !== 0 && indent !== 0) {
+        inconsistentIndent = true;
+      }
+    }
+  }
+
+  // Report tab usage
+  if (hasTabs) {
+    issues.push({
+      file: filePath,
+      line: 1,
+      severity: "error",
+      rule: "yaml/tab-indent",
+      message: "YAML uses spaces for indentation — tabs are not allowed",
+      suggestion: "Replace tabs with spaces (2 spaces per indent level)",
+    });
+  }
+
+  // Report inconsistent indentation
+  if (inconsistentIndent) {
+    issues.push({
+      file: filePath,
+      line: 1,
+      severity: "warning",
+      rule: "yaml/inconsistent-indent",
+      message: "Indentation depth is not a multiple of 2 — may cause parsing issues",
+      suggestion: "Use consistent 2-space indentation throughout the file",
+    });
+  }
+
+  // Check for common YAML mistakes
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    // Unquoted URLs with colons (e.g., https://example.com)
+    if (/^https?:\/\//.test(trimmed) || /:\s*https?:\/\//.test(trimmed)) {
+      issues.push({
+        file: filePath,
+        line: i + 1,
+        severity: "info",
+        rule: "yaml/unquoted-url",
+        message: "URL should be quoted to avoid colon parsing ambiguity",
+        suggestion: "Wrap URL in quotes: \"https://...\"",
+      });
+    }
+
+    // Bool values that might be misinterpreted (yes/no/on/off)
+    if (/^\s*\w+:\s*(yes|no|on|off)\s*$/.test(lines[i])) {
+      issues.push({
+        file: filePath,
+        line: i + 1,
+        severity: "info",
+        rule: "yaml/ambiguous-bool",
+        message: "Ambiguous boolean value — YAML interprets yes/no/on/off as booleans",
+        suggestion: "Use true/false instead for clarity, or quote the value",
+      });
+    }
+  }
+
+  // Mixed tabs and spaces
+  if (hasTabs && hasSpaces) {
+    issues.push({
+      file: filePath,
+      line: 1,
+      severity: "error",
+      rule: "yaml/mixed-indent",
+      message: "Mixed tabs and spaces in indentation",
+      suggestion: "Use spaces only (2 spaces per level)",
+    });
+  }
+}
+
+/** TOML-specific checks: duplicate keys, format consistency */
+function checkToml(filePath: string, _content: string, lines: string[], issues: ReviewIssue[]): void {
+  const seenKeys = new Map<string, number>();
+  const arrayTables = new Set<string>();
+  let currentTable = "";
+
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith("#")) continue;
+
+    // Track table headers
+    // [[array]] for arrays of tables (allow duplicates), [table] for standard tables
+    const isArrayTable = trimmed.startsWith("[[");
+    const tableMatch = trimmed.match(/^\[\[?(.+?)\]?\]$/);
+    if (tableMatch) {
+      currentTable = tableMatch[1];
+      if (isArrayTable) {
+        arrayTables.add(currentTable);
+      }
+      continue;
+    }
+
+    // Track key-value pairs (skip array-of-table entries — they naturally repeat)
+    const kvMatch = trimmed.match(/^(\w+)\s*=/);
+    if (kvMatch) {
+      const fullKey = currentTable ? `${currentTable}.${kvMatch[1]}` : kvMatch[1];
+
+      // Skip duplicate check if this key is inside an array-of-tables (duplicates allowed by design)
+      const parentTable = currentTable.split(".").slice(0, -1).join(".");
+      const isInArrayTable = arrayTables.has(currentTable) || arrayTables.has(parentTable);
+
+      if (seenKeys.has(fullKey)) {
+        if (!isInArrayTable) {
+          const prevLine = seenKeys.get(fullKey)!;
+          issues.push({
+            file: filePath,
+            line: i + 1,
+            severity: "warning",
+            rule: "toml/duplicate-key",
+            message: `Duplicate key "${fullKey}" (first defined at line ${prevLine})`,
+            suggestion: "Remove or rename the duplicate — only last value is kept",
+          });
+        }
+      } else {
+        seenKeys.set(fullKey, i + 1);
+      }
+    }
+
+    // Check for inline table with duplicate keys
+    if (/\{[^}]*\}/.test(trimmed)) {
+      const inlineContent = trimmed.match(/\{([^}]*)\}/);
+      if (inlineContent) {
+        const inlineKeys = inlineContent[1].match(/(\w+)\s*=/g);
+        if (inlineKeys) {
+          const inlineSeen = new Set<string>();
+          for (const k of inlineKeys) {
+            const keyName = k.replace(/\s*=\s*$/, "").trim();
+            if (inlineSeen.has(keyName)) {
+              issues.push({
+                file: filePath,
+                line: i + 1,
+                severity: "warning",
+                rule: "toml/duplicate-inline-key",
+                message: `Duplicate key "${keyName}" in inline table`,
+                suggestion: "Remove the duplicate key",
+              });
+            }
+            inlineSeen.add(keyName);
+          }
+        }
+      }
+    }
   }
 }
 
